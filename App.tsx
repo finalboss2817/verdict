@@ -30,13 +30,12 @@ const App: React.FC = () => {
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
   const checkKeyStatus = useCallback(async () => {
-    // Rely on environment variable primarily
-    if (process.env.API_KEY) {
+    const envKey = process.env.API_KEY;
+    if (envKey && envKey !== 'undefined') {
       setShowKeyButton(false);
       return;
     }
 
-    // Only show button if the specialized platform bridge is detected
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
       try {
@@ -45,12 +44,15 @@ const App: React.FC = () => {
       } catch (e) {
         setShowKeyButton(true);
       }
+    } else {
+      // If we are here, we don't have an env key and no AI Studio bridge.
+      setShowKeyButton(false); 
     }
   }, []);
 
   useEffect(() => {
     checkKeyStatus();
-    const interval = setInterval(checkKeyStatus, 3000);
+    const interval = setInterval(checkKeyStatus, 5000);
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
@@ -93,8 +95,6 @@ const App: React.FC = () => {
       } catch (err) {
         setError("Bridge Error: Portal initialization failed.");
       }
-    } else {
-      setError("Operational Notice: Key Bridge unavailable. Use environment settings for API_KEY.");
     }
   };
 
@@ -137,7 +137,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Verdict Generation Failed:", err);
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        setError("Clearance Error: No valid API_KEY found. Ensure 'API_KEY' is set in your environment variables.");
+        setError("Clearance Error: Your API_KEY is missing or invalid. Check your environment settings.");
       } else {
         setError(err.message || 'Operational failure. Strategic connection timed out.');
       }
@@ -271,7 +271,7 @@ const App: React.FC = () => {
                   <div className="text-center space-y-4">
                     <h2 className="text-4xl md:text-6xl font-black text-zinc-100 tracking-tighter italic break-words">VERDICT</h2>
                     <div className="space-y-1">
-                      <p className="text-zinc-600 max-w-lg mx-auto leading-relaxed text-[10px] md:text-sm font-medium uppercase tracking-widest px-4">The Deal Disqualification Engine</p>
+                      <p className="text-zinc-600 max-lg mx-auto leading-relaxed text-[10px] md:text-sm font-medium uppercase tracking-widest px-4">The Deal Disqualification Engine</p>
                       <p className="text-zinc-500 font-mono text-[9px] md:text-[11px] uppercase tracking-[0.2em] font-medium italic">A venture by Meena technologies</p>
                     </div>
                   </div>
@@ -322,7 +322,7 @@ const App: React.FC = () => {
                     {error && (
                       <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-2xl flex flex-col gap-3 text-rose-400 text-xs items-center text-center">
                         <div className="flex items-center gap-2"><AlertCircle size={20} /><p className="font-bold tracking-tight">{error}</p></div>
-                        <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API_KEY) is required. Verify your environment variables or platform settings.</p>
+                        <p className="text-[9px] uppercase tracking-tighter opacity-70 italic">If you have correctly set 'API_KEY' in your environment, try refreshing the page to sync the link.</p>
                       </div>
                     )}
                   </form>

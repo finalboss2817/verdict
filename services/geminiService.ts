@@ -25,25 +25,24 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use the environment variable directly as required by the platform
+  // Direct access to process.env.API_KEY as per core guidelines
   const apiKey = process.env.API_KEY;
   
-  if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    console.error("Strategic Link Failure: API_KEY is empty or undefined in the execution context.");
+  if (!apiKey || apiKey === 'undefined') {
+    console.error("Critical: API_KEY not found in process.env");
     throw new Error("API_KEY_MISSING");
   }
 
   const ai = new GoogleGenAI({ apiKey });
   
-  // Use gemini-3-pro-preview as the primary high-stakes engine
-  const models = ["gemini-3-pro-preview", "gemini-3-flash-preview"];
-  let lastError = null;
+  // We use Flash as the primary engine to ensure compatibility with standard keys
+  // while maintaining high-speed logic analysis.
+  const modelName = 'gemini-3-flash-preview';
 
-  for (const modelName of models) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: `
+  try {
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: `
 CONTEXT:
 Protocol: ${input.mode}
 Sale Type: ${input.ticketSize}
@@ -54,57 +53,51 @@ OBJECTION RECEIVED:
 "${input.objection}"
 
 Analyze this and provide a structured JSON verdict according to the schema.
-        `,
-        config: {
-          systemInstruction: getSystemInstruction(input.mode),
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              meaning: { type: Type.STRING, description: "The brutal truth behind the words." },
-              intentLevel: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
-              intentExplanation: { type: Type.STRING, description: "Why the intent is ranked this way." },
-              closeProbability: { type: Type.STRING, description: "Percentage range (e.g., 20-30%)." },
-              bestResponse: { type: Type.STRING, description: "The exact message to send." },
-              whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING }, description: "1-2 common mistakes." },
-              followUpStrategy: {
-                type: Type.OBJECT,
-                properties: {
-                  maxFollowUps: { type: Type.STRING },
-                  timeGap: { type: Type.STRING },
-                  stopCondition: { type: Type.STRING }
-                },
-                required: ["maxFollowUps", "timeGap", "stopCondition"]
+      `,
+      config: {
+        systemInstruction: getSystemInstruction(input.mode),
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            meaning: { type: Type.STRING, description: "The brutal truth behind the words." },
+            intentLevel: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+            intentExplanation: { type: Type.STRING, description: "Why the intent is ranked this way." },
+            closeProbability: { type: Type.STRING, description: "Percentage range (e.g., 10-20%)." },
+            bestResponse: { type: Type.STRING, description: "The exact message to send." },
+            whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING } },
+            followUpStrategy: {
+              type: Type.OBJECT,
+              properties: {
+                maxFollowUps: { type: Type.STRING },
+                timeGap: { type: Type.STRING },
+                stopCondition: { type: Type.STRING }
               },
-              walkAwaySignal: { type: Type.STRING, description: "Specific behavior that signals it's over." }
+              required: ["maxFollowUps", "timeGap", "stopCondition"]
             },
-            required: ["meaning", "intentLevel", "intentExplanation", "closeProbability", "bestResponse", "whatNotToSay", "followUpStrategy", "walkAwaySignal"]
-          }
+            walkAwaySignal: { type: Type.STRING }
+          },
+          required: ["meaning", "intentLevel", "intentExplanation", "closeProbability", "bestResponse", "whatNotToSay", "followUpStrategy", "walkAwaySignal"]
         }
-      });
-
-      const text = response.text;
-      if (!text) throw new Error("Tactical response stream interrupted.");
-
-      return JSON.parse(text);
-    } catch (error: any) {
-      lastError = error;
-      const msg = error.message || "";
-      
-      // Fallback logic for restricted or unavailable models
-      if (msg.includes("not found") || msg.includes("404") || msg.includes("403")) {
-        console.warn(`Strategic Link: Model ${modelName} unavailable. Attempting secondary routing...`);
-        continue;
       }
-      
-      // Immediate exit for fundamental key issues
-      if (msg.includes("API key not found") || msg.includes("invalid") || msg.includes("401")) {
-        throw new Error("API_KEY_INVALID");
-      }
-      
-      break;
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("The engine returned an empty response.");
+
+    return JSON.parse(text);
+  } catch (error: any) {
+    console.error("Gemini Engine Error:", error);
+    const msg = error.message || "";
+    
+    if (msg.includes("API key not found") || msg.includes("401") || msg.includes("invalid")) {
+      throw new Error("API_KEY_INVALID");
     }
-  }
+    
+    if (msg.includes("model not found") || msg.includes("404")) {
+      throw new Error("The selected model is unavailable for your current key permissions.");
+    }
 
-  throw lastError || new Error("Strategic link failed. Please verify API_KEY in environment variables.");
+    throw new Error(`Operational failure: ${msg}`);
+  }
 }
