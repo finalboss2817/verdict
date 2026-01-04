@@ -25,15 +25,14 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use bracket notation to prevent Vite/esbuild from statically replacing process.env.API_KEY
-  const env = (window as any).process?.env || (process as any).env;
-  const apiKey = env['API_KEY'];
+  // Use a new instance per call as per instructions for dynamic key updates
+  // Accessing process.env.API_KEY directly as it is the primary source
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
     throw new Error("API_KEY_MISSING");
   }
 
-  // Create instance right before call to ensure latest key from dialog is used
   const ai = new GoogleGenAI({ apiKey });
   
   try {
@@ -72,7 +71,6 @@ Analyze this and provide a structured JSON verdict according to the schema.
               },
               required: ["maxFollowUps", "timeGap", "stopCondition"]
             },
-            meaningfulQuote: { type: Type.STRING, description: "A cold sales maxim." },
             walkAwaySignal: { type: Type.STRING, description: "Specific behavior that signals it's over." }
           },
           required: ["meaning", "intentLevel", "intentExplanation", "closeProbability", "bestResponse", "whatNotToSay", "followUpStrategy", "walkAwaySignal"]
@@ -82,8 +80,10 @@ Analyze this and provide a structured JSON verdict according to the schema.
 
     return JSON.parse(response.text);
   } catch (error: any) {
-    // Specifically handle the case where the key is invalid or doesn't have access to the model
-    if (error.message?.includes("Requested entity was not found") || error.message?.includes("API key not found")) {
+    // If the error indicates a key issue, signal the UI to prompt for key selection
+    if (error.message?.includes("Requested entity was not found") || 
+        error.message?.includes("API key not found") || 
+        error.message?.includes("invalid")) {
       throw new Error("API_KEY_INVALID");
     }
     throw error;

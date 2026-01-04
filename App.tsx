@@ -26,28 +26,17 @@ const App: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [hasApiKey, setHasApiKey] = useState(true);
+  
+  // Default to true to prevent flickering/scaring user before first attempt
+  const [needsKeySelection, setNeedsKeySelection] = useState(false);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
-
-  const checkApiKeyStatus = useCallback(async () => {
-    const env = (window as any).process?.env || (process as any).env;
-    const directKey = env['API_KEY'];
-    
-    if (typeof (window as any).aistudio !== 'undefined') {
-      const selected = await (window as any).aistudio.hasSelectedApiKey();
-      setHasApiKey(selected || !!directKey);
-    } else {
-      setHasApiKey(!!directKey);
-    }
-  }, []);
 
   useEffect(() => {
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
-    checkApiKeyStatus();
-  }, [checkApiKeyStatus]);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -82,15 +71,18 @@ const App: React.FC = () => {
   }, [session, fetchHistory]);
 
   const handleSelectKey = async () => {
-    if (typeof (window as any).aistudio !== 'undefined') {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       try {
-        await (window as any).aistudio.openSelectKey();
-        // Per platform instructions, assume success after triggering the dialog
-        setHasApiKey(true);
+        await aiStudio.openSelectKey();
+        setNeedsKeySelection(false);
         setError(null);
       } catch (err) {
-        console.error("Failed to open key selector", err);
+        console.error("Key selection failed", err);
       }
+    } else {
+      // If window.aistudio doesn't exist, we can't do anything other than inform the user
+      setError("Strategic Intelligence failure: External API environment not detected. Ensure you are running in a supported environment.");
     }
   };
 
@@ -133,8 +125,8 @@ const App: React.FC = () => {
       if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        setHasApiKey(false);
-        setError("Operational clearance required. Access Gemini Pro via a valid API key from a paid GCP project.");
+        setNeedsKeySelection(true);
+        setError("Sovereign Clearance Denied: An active Gemini Pro API key is required. Please authorize via the secure protocol button.");
       } else {
         setError(err.message || 'Operational failure. Check system logs.');
       }
@@ -308,13 +300,13 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex gap-2">
-            {!hasApiKey && (
+            {needsKeySelection && (
               <button 
                 onClick={handleSelectKey}
-                className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all"
+                className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all animate-pulse"
               >
                 <Key size={14} />
-                AUTHORIZE PRO
+                AUTHORIZE ENGINE
               </button>
             )}
             <button 
@@ -445,13 +437,15 @@ const App: React.FC = () => {
                           <AlertCircle size={20} className="shrink-0" />
                           <p className="font-bold tracking-tight">{error}</p>
                         </div>
-                        <button 
-                          type="button"
-                          onClick={handleSelectKey}
-                          className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
-                        >
-                          Click to Authorize API Access
-                        </button>
+                        {needsKeySelection && (
+                          <button 
+                            type="button"
+                            onClick={handleSelectKey}
+                            className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
+                          >
+                            Click here to authorize strategic access
+                          </button>
+                        )}
                       </div>
                     )}
                   </form>
