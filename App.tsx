@@ -27,7 +27,8 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  const [showKeyButton, setShowKeyButton] = useState(true); // Default to true for better resilience
+  // Only show key button if the platform actually supports the dialog
+  const [showKeyButton, setShowKeyButton] = useState(false);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
@@ -40,12 +41,15 @@ const App: React.FC = () => {
       } catch (e) {
         setShowKeyButton(true);
       }
+    } else {
+      // If the platform helper is missing, we rely strictly on process.env.API_KEY
+      setShowKeyButton(false);
     }
   }, []);
 
   useEffect(() => {
     checkKeyStatus();
-    // Poll status periodically to catch platform injection
+    // Poll for platform injection or key updates
     const interval = setInterval(checkKeyStatus, 3000);
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
@@ -85,12 +89,10 @@ const App: React.FC = () => {
       try {
         await aiStudio.openSelectKey();
         setError(null);
-        setShowKeyButton(false); // Assume success per instructions
+        setShowKeyButton(false); 
       } catch (err) {
-        setError("Strategic Error: Could not open authorization portal.");
+        setError("Strategic Error: Authorization portal failed to initialize.");
       }
-    } else {
-      setError("Platform Error: Strategic link unavailable in this context.");
     }
   };
 
@@ -133,8 +135,13 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Verdict Generation Failed:", err);
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        setShowKeyButton(true);
-        setError("Operational Clearance Required: No valid strategic key detected. Please click the Authorize button.");
+        const aiStudio = (window as any).aistudio;
+        if (aiStudio) {
+          setShowKeyButton(true);
+          setError("Clearance Required: Please click 'Authorize Access' to link your strategic key.");
+        } else {
+          setError("Clearance Required: No API key detected. Please ensure 'API_KEY' is configured in your project settings.");
+        }
       } else {
         setError(err.message || 'Operational failure. Strategic connection timed out.');
       }
@@ -321,7 +328,7 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-2"><AlertCircle size={20} /><p className="font-bold tracking-tight">{error}</p></div>
                         {showKeyButton && (
                           <div className="space-y-2">
-                             <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API Key) is mandatory for this model. Use your project's key via the Authorize button.</p>
+                             <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API Key) is mandatory. Use your project's key via the Authorize button.</p>
                              <button type="button" onClick={handleSelectKey} className="text-[10px] font-black uppercase underline hover:text-white transition-colors">AUTHORIZE PORTAL ACCESS</button>
                           </div>
                         )}

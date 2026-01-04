@@ -25,7 +25,7 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Access the injected API key
+  // Use the environment injected API key strictly
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
@@ -34,7 +34,8 @@ export async function analyzeObjection(input: ObjectionInput) {
 
   const ai = new GoogleGenAI({ apiKey });
   
-  // High-stakes reasoning usually requires Pro, but Flash is used as a resilient fallback
+  // Preferred analyst model: Gemini 3 Pro
+  // Resilient fallback model: Gemini 3 Flash
   const models = ["gemini-3-pro-preview", "gemini-3-flash-preview"];
   let lastError = null;
 
@@ -83,27 +84,30 @@ Analyze this and provide a structured JSON verdict according to the schema.
       });
 
       const text = response.text;
-      if (!text) throw new Error("Empty response from tactical link.");
+      if (!text) throw new Error("Empty response from strategic link.");
 
       return JSON.parse(text);
     } catch (error: any) {
       lastError = error;
       const msg = error.message || "";
       
-      // If the error isn't a "Model Not Found/Unauthorized" error, don't bother trying the next model
-      if (!msg.includes("Requested entity was not found") && !msg.includes("404") && !msg.includes("403")) {
-        break;
+      // Filter: If it's a model not found or a 403 (unauthorized model), we fallback.
+      // But if it's a global 401/403 for the whole key, we should propagate that.
+      if (msg.includes("Requested entity was not found") || msg.includes("404") || (msg.includes("403") && msg.toLowerCase().includes("model"))) {
+        console.warn(`Strategic Link: Model ${modelName} restricted or unavailable. Falling back...`);
+        continue;
       }
-      // If it is a 404/403, we continue to the next model in the loop (Flash)
-      console.warn(`Strategic Link: Model ${modelName} unavailable. Attempting fallback...`);
+      
+      // Stop loop if it's a fatal key error
+      break;
     }
   }
 
-  // If we reach here, both models failed or an authentication error occurred
+  // Handle errors that prevent any model from executing
   const msg = lastError?.message || "";
   if (msg.includes("API key not found") || msg.includes("invalid") || msg.includes("403") || msg.includes("401")) {
     throw new Error("API_KEY_INVALID");
   }
   
-  throw lastError || new Error("Tactical connection failed.");
+  throw lastError || new Error("Strategic link failed to respond.");
 }
