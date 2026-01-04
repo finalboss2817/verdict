@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './services/supabase';
 import { analyzeObjection } from './services/geminiService';
@@ -28,24 +27,30 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  const [showKeyButton, setShowKeyButton] = useState(false);
+  const [showKeyButton, setShowKeyButton] = useState(true); // Default to true for better resilience
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
-  // Check if we need to show the key selection button
   const checkKeyStatus = useCallback(async () => {
     const aiStudio = (window as any).aistudio;
-    if (aiStudio) {
-      const hasKey = typeof aiStudio.hasSelectedApiKey === 'function' ? await aiStudio.hasSelectedApiKey() : true;
-      setShowKeyButton(!hasKey);
+    if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
+      try {
+        const hasKey = await aiStudio.hasSelectedApiKey();
+        setShowKeyButton(!hasKey);
+      } catch (e) {
+        setShowKeyButton(true);
+      }
     }
   }, []);
 
   useEffect(() => {
     checkKeyStatus();
+    // Poll status periodically to catch platform injection
+    const interval = setInterval(checkKeyStatus, 3000);
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
+    return () => clearInterval(interval);
   }, [checkKeyStatus]);
 
   useEffect(() => {
@@ -63,21 +68,15 @@ const App: React.FC = () => {
 
   const fetchHistory = useCallback(async () => {
     if (!session?.user) return;
-    
     const { data, error } = await supabase
       .from('analyses')
       .select('*')
       .order('timestamp', { ascending: false });
-
-    if (!error && data) {
-      setHistory(data as Analysis[]);
-    }
+    if (!error && data) setHistory(data as Analysis[]);
   }, [session]);
 
   useEffect(() => {
-    if (session) {
-      fetchHistory();
-    }
+    if (session) fetchHistory();
   }, [session, fetchHistory]);
 
   const handleSelectKey = async () => {
@@ -86,10 +85,12 @@ const App: React.FC = () => {
       try {
         await aiStudio.openSelectKey();
         setError(null);
-        setShowKeyButton(false);
+        setShowKeyButton(false); // Assume success per instructions
       } catch (err) {
-        setError("Operational Protocol Failure: Could not initialize key selection.");
+        setError("Strategic Error: Could not open authorization portal.");
       }
+    } else {
+      setError("Platform Error: Strategic link unavailable in this context.");
     }
   };
 
@@ -127,17 +128,16 @@ const App: React.FC = () => {
       setHistory(prev => [savedAnalysis, ...prev]);
       setCurrentAnalysisId(savedAnalysis.id);
       setActiveView('engine');
-      
       setFormData(INITIAL_FORM_STATE);
       if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
+      console.error("Verdict Generation Failed:", err);
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
         setShowKeyButton(true);
-        setError("Operational Clearance Required: No valid strategic key detected. Please establish a link.");
+        setError("Operational Clearance Required: No valid strategic key detected. Please click the Authorize button.");
       } else {
-        setError(err.message || 'Operational failure. Check system logs.');
+        setError(err.message || 'Operational failure. Strategic connection timed out.');
       }
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -239,7 +239,6 @@ const App: React.FC = () => {
             </div>
             <div className="flex gap-1">
               <a href="https://www.linkedin.com/in/manish-trivedi-943331215" target="_blank" rel="noopener noreferrer" className="p-2 text-zinc-600 hover:text-blue-400 transition-colors"><Linkedin size={16} /></a>
-              {/* Fix: Moved title prop from LogOut icon to parent button to resolve TypeScript error as Lucide icons don't support title prop */}
               <button onClick={handleLogout} title="Terminate" className="p-2 text-zinc-600 hover:text-rose-400 transition-colors"><LogOut size={16} /></button>
             </div>
           </div>
@@ -252,7 +251,7 @@ const App: React.FC = () => {
           <div className="flex gap-2">
             {showKeyButton && (
               <button onClick={handleSelectKey} className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all animate-pulse">
-                <Key size={14} /> AUTHORIZE
+                <Key size={14} /> AUTHORIZE ACCESS
               </button>
             )}
             <button onClick={startNewVerdict} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all shadow-xl active:scale-95">
@@ -320,7 +319,12 @@ const App: React.FC = () => {
                     {error && (
                       <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-2xl flex flex-col gap-3 text-rose-400 text-xs items-center text-center">
                         <div className="flex items-center gap-2"><AlertCircle size={20} /><p className="font-bold tracking-tight">{error}</p></div>
-                        {showKeyButton && <button type="button" onClick={handleSelectKey} className="text-[10px] font-black uppercase underline hover:text-white transition-colors">AUTHORIZE ACCESS</button>}
+                        {showKeyButton && (
+                          <div className="space-y-2">
+                             <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API Key) is mandatory for this model. Use your project's key via the Authorize button.</p>
+                             <button type="button" onClick={handleSelectKey} className="text-[10px] font-black uppercase underline hover:text-white transition-colors">AUTHORIZE PORTAL ACCESS</button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </form>
