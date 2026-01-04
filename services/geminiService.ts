@@ -25,17 +25,17 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use the environment injected API key strictly
-  const apiKey = process.env.API_KEY;
+  // Check both window.process.env and process.env to ensure coverage in different browser shims
+  const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
   
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+    console.error("Strategic Link Failure: No API_KEY detected in environment.");
     throw new Error("API_KEY_MISSING");
   }
 
   const ai = new GoogleGenAI({ apiKey });
   
-  // Preferred analyst model: Gemini 3 Pro
-  // Resilient fallback model: Gemini 3 Flash
+  // We prioritize Pro for depth, but Flash is used as a high-speed, more accessible fallback
   const models = ["gemini-3-pro-preview", "gemini-3-flash-preview"];
   let lastError = null;
 
@@ -84,30 +84,28 @@ Analyze this and provide a structured JSON verdict according to the schema.
       });
 
       const text = response.text;
-      if (!text) throw new Error("Empty response from strategic link.");
+      if (!text) throw new Error("Empty tactical stream.");
 
       return JSON.parse(text);
     } catch (error: any) {
       lastError = error;
       const msg = error.message || "";
       
-      // Filter: If it's a model not found or a 403 (unauthorized model), we fallback.
-      // But if it's a global 401/403 for the whole key, we should propagate that.
-      if (msg.includes("Requested entity was not found") || msg.includes("404") || (msg.includes("403") && msg.toLowerCase().includes("model"))) {
-        console.warn(`Strategic Link: Model ${modelName} restricted or unavailable. Falling back...`);
+      // If the specific model isn't found or allowed, move to the next one (Flash)
+      if (msg.includes("not found") || msg.includes("404") || msg.includes("403")) {
+        console.warn(`Strategic Handshake: Model ${modelName} unavailable. Re-routing to secondary engine...`);
         continue;
       }
       
-      // Stop loop if it's a fatal key error
+      // If it's a fundamental key error (401), stop immediately to show Auth UI
+      if (msg.includes("API key not found") || msg.includes("invalid") || msg.includes("401")) {
+        throw new Error("API_KEY_INVALID");
+      }
+      
       break;
     }
   }
 
-  // Handle errors that prevent any model from executing
-  const msg = lastError?.message || "";
-  if (msg.includes("API key not found") || msg.includes("invalid") || msg.includes("403") || msg.includes("401")) {
-    throw new Error("API_KEY_INVALID");
-  }
-  
-  throw lastError || new Error("Strategic link failed to respond.");
+  // Final fallback for all model attempts
+  throw lastError || new Error("Strategic link failed to respond. Check key permissions.");
 }

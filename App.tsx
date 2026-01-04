@@ -27,13 +27,21 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // Only show key button if the platform actually supports the dialog
-  const [showKeyButton, setShowKeyButton] = useState(false);
+  // Show key button if no key in env OR if platform bridge is available
+  const [showKeyButton, setShowKeyButton] = useState(true);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
   const checkKeyStatus = useCallback(async () => {
+    // Check if key exists in env first
+    const envKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
     const aiStudio = (window as any).aistudio;
+    
+    if (envKey) {
+      setShowKeyButton(false);
+      return;
+    }
+
     if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
       try {
         const hasKey = await aiStudio.hasSelectedApiKey();
@@ -42,14 +50,12 @@ const App: React.FC = () => {
         setShowKeyButton(true);
       }
     } else {
-      // If the platform helper is missing, we rely strictly on process.env.API_KEY
-      setShowKeyButton(false);
+      setShowKeyButton(true); // Keep visible if we need one
     }
   }, []);
 
   useEffect(() => {
     checkKeyStatus();
-    // Poll for platform injection or key updates
     const interval = setInterval(checkKeyStatus, 3000);
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
@@ -91,8 +97,10 @@ const App: React.FC = () => {
         setError(null);
         setShowKeyButton(false); 
       } catch (err) {
-        setError("Strategic Error: Authorization portal failed to initialize.");
+        setError("Bridge Error: Portal initialization failed.");
       }
+    } else {
+      setError("Strategic Notice: Please add your key as 'API_KEY' in the environment settings.");
     }
   };
 
@@ -135,13 +143,8 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Verdict Generation Failed:", err);
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        const aiStudio = (window as any).aistudio;
-        if (aiStudio) {
-          setShowKeyButton(true);
-          setError("Clearance Required: Please click 'Authorize Access' to link your strategic key.");
-        } else {
-          setError("Clearance Required: No API key detected. Please ensure 'API_KEY' is configured in your project settings.");
-        }
+        setShowKeyButton(true);
+        setError("Clearance Denied: No valid API key detected. Please link your strategic key.");
       } else {
         setError(err.message || 'Operational failure. Strategic connection timed out.');
       }
@@ -328,7 +331,7 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-2"><AlertCircle size={20} /><p className="font-bold tracking-tight">{error}</p></div>
                         {showKeyButton && (
                           <div className="space-y-2">
-                             <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API Key) is mandatory. Use your project's key via the Authorize button.</p>
+                             <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API Key) is mandatory. If you have a key, ensure it is set as 'API_KEY' in your project secrets.</p>
                              <button type="button" onClick={handleSelectKey} className="text-[10px] font-black uppercase underline hover:text-white transition-colors">AUTHORIZE PORTAL ACCESS</button>
                           </div>
                         )}
