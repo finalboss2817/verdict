@@ -6,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Linkedin, Menu, X } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Key, Menu, X } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -26,7 +26,20 @@ const App: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(true);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
+
+  const checkKey = useCallback(async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio?.hasSelectedApiKey) {
+      const selected = await aiStudio.hasSelectedApiKey();
+      setHasApiKey(selected);
+    } else if (process.env.API_KEY) {
+      setHasApiKey(true);
+    } else {
+      setHasApiKey(false);
+    }
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -38,9 +51,24 @@ const App: React.FC = () => {
       setSession(session);
     });
 
+    checkKey();
+    const interval = setInterval(checkKey, 2000);
     if (window.innerWidth >= 1024) setIsSidebarOpen(true);
-    return () => subscription.unsubscribe();
-  }, []);
+    
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(interval);
+    };
+  }, [checkKey]);
+
+  const handleAuthorize = async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio?.openSelectKey) {
+      await aiStudio.openSelectKey();
+      setHasApiKey(true);
+      setError(null);
+    }
+  };
 
   const fetchHistory = useCallback(async () => {
     if (!session?.user) return;
@@ -90,41 +118,25 @@ const App: React.FC = () => {
       setCurrentAnalysisId(savedAnalysis.id);
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
-      if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
-      console.error("Analysis Failure:", err);
-      setError(err.message || "The analysis engine failed to respond. Please verify your connection.");
+      if (err.message === "MISSING_API_KEY" || err.message === "ENTITY_NOT_FOUND") {
+        setHasApiKey(false);
+        setError("API Key Required. Use the 'AUTHORIZE ENGINE' button to proceed.");
+      } else {
+        setError(err.message || "Strategic link failure.");
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const deleteAnalysis = async (id: string) => {
-    if (!session?.user) return;
-    const { error } = await supabase.from('analyses').delete().eq('id', id);
-    if (!error) {
-      setHistory(prev => prev.filter(a => a.id !== id));
-      if (currentAnalysisId === id) setCurrentAnalysisId(null);
-    }
-  };
+  const handleLogout = () => supabase.auth.signOut();
 
-  const handleLogout = async () => await supabase.auth.signOut();
-
-  const startNewVerdict = () => {
-    setFormData({ ...INITIAL_FORM_STATE });
-    setCurrentAnalysisId(null);
-    setActiveView('engine');
-    setError(null);
-    if (window.innerWidth < 1024) setIsSidebarOpen(false);
-  };
-
-  if (isInitialLoading) {
-    return (
-      <div className="min-h-screen bg-[#070707] flex items-center justify-center">
-        <Loader2 className="animate-spin text-zinc-500" size={32} />
-      </div>
-    );
-  }
+  if (isInitialLoading) return (
+    <div className="min-h-screen bg-[#070707] flex items-center justify-center">
+      <Loader2 className="animate-spin text-zinc-500" size={32} />
+    </div>
+  );
 
   if (!session) return <Auth />;
 
@@ -133,10 +145,10 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-[#070707] text-zinc-100 overflow-hidden">
       {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:overflow-hidden lg:opacity-0'}`}>
+      <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:opacity-0'}`}>
         <div className="p-6 border-b border-zinc-900 flex justify-between items-center">
           <div className="flex flex-col">
             <div className="flex items-center gap-2 text-zinc-100">
@@ -145,7 +157,7 @@ const App: React.FC = () => {
             </div>
             <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-tighter mt-0.5">A venture by Meena technologies</span>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-zinc-500 hover:text-white">
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-zinc-500">
             <X size={20} />
           </button>
         </div>
@@ -164,13 +176,9 @@ const App: React.FC = () => {
             <History size={14} />
             <span className="text-[10px] font-black uppercase tracking-[0.2em]">History</span>
           </div>
-          {history.length === 0 ? (
-            <div className="text-center py-12"><p className="text-zinc-700 text-xs italic">Pipeline clear.</p></div>
-          ) : (
-            history.map(item => (
-              <HistoryItem key={item.id} analysis={item} isActive={currentAnalysisId === item.id && activeView === 'engine'} onClick={() => { setCurrentAnalysisId(item.id); setActiveView('engine'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }} />
-            ))
-          )}
+          {history.map(item => (
+            <HistoryItem key={item.id} analysis={item} isActive={currentAnalysisId === item.id} onClick={() => { setCurrentAnalysisId(item.id); setActiveView('engine'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }} />
+          ))}
         </div>
 
         <div className="p-4 border-t border-zinc-900 bg-zinc-950">
@@ -184,15 +192,22 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-full bg-[#070707] relative">
-        <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-[#070707] z-30">
+      <main className="flex-1 flex flex-col h-full bg-[#070707] relative overflow-y-auto">
+        <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-[#070707]/90 backdrop-blur-md z-30">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600"><Menu size={18} /></button>
-          <button onClick={startNewVerdict} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-4 py-2 rounded-full text-xs font-black transition-all">
-            <PlusCircle size={16} /> NEW VERDICT
-          </button>
+          <div className="flex gap-2">
+            {!hasApiKey && (
+              <button onClick={handleAuthorize} className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-4 py-2 rounded-full text-xs font-black transition-all animate-pulse">
+                <Key size={16} /> AUTHORIZE ENGINE
+              </button>
+            )}
+            <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-4 py-2 rounded-full text-xs font-black transition-all">
+              <PlusCircle size={16} /> NEW VERDICT
+            </button>
+          </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto w-full">
+        <div className="flex-1 w-full">
           {activeView === 'protocol' ? <Protocol /> : (
             <div className="max-w-4xl mx-auto p-4 md:p-6 lg:p-12">
               {(!currentAnalysisId || !currentAnalysis) ? (
@@ -208,10 +223,10 @@ const App: React.FC = () => {
                     <div className="space-y-3">
                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Protocol</label>
                        <div className="grid grid-cols-2 gap-4">
-                          <button type="button" onClick={() => setFormData({...formData, mode: 'VOID'})} className={`p-4 rounded-xl border flex flex-col items-center gap-2 ${formData.mode === 'VOID' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}>
+                          <button type="button" onClick={() => setFormData({...formData, mode: 'VOID'})} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${formData.mode === 'VOID' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-lg shadow-emerald-500/10' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}>
                             <Zap size={20} /> <span className="font-black text-xs uppercase">VOID</span>
                           </button>
-                          <button type="button" onClick={() => setFormData({...formData, mode: 'NEXUS'})} className={`p-4 rounded-xl border flex flex-col items-center gap-2 ${formData.mode === 'NEXUS' ? 'bg-blue-500/10 border-blue-500 text-blue-500' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}>
+                          <button type="button" onClick={() => setFormData({...formData, mode: 'NEXUS'})} className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${formData.mode === 'NEXUS' ? 'bg-blue-500/10 border-blue-500 text-blue-500 shadow-lg shadow-blue-500/10' : 'bg-zinc-950 border-zinc-800 text-zinc-500'}`}>
                             <Crosshair size={20} /> <span className="font-black text-xs uppercase">NEXUS</span>
                           </button>
                        </div>
@@ -241,7 +256,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <button disabled={isLoading} className="w-full bg-zinc-100 hover:bg-white text-black font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 text-sm">
+                    <button disabled={isLoading || !hasApiKey} className="w-full bg-zinc-100 hover:bg-white text-black font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all disabled:opacity-50 text-sm">
                       {isLoading ? <Loader2 size={24} className="animate-spin" /> : <><Send size={18} /> GENERATE VERDICT</>}
                     </button>
 
@@ -252,7 +267,12 @@ const App: React.FC = () => {
                     )}
                   </form>
                 </div>
-              ) : <AnalysisView analysis={currentAnalysis} onDelete={deleteAnalysis} />}
+              ) : <AnalysisView analysis={currentAnalysis} onDelete={(id) => {
+                supabase.from('analyses').delete().eq('id', id).then(() => {
+                  setHistory(h => h.filter(a => a.id !== id));
+                  setCurrentAnalysisId(null);
+                });
+              }} />}
             </div>
           )}
         </div>
