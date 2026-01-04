@@ -1,18 +1,39 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
-import { Gavel, Loader2, ShieldCheck, Mail, Lock } from 'lucide-react';
+import { Gavel, Loader2, ShieldCheck, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 export const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const validateEmail = (email: string) => {
+    return String(email)
+      .toLowerCase()
+      .match(
+        /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+      );
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address.");
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      setLoading(false);
+      return;
+    }
 
     const { error } = isSignUp 
       ? await supabase.auth.signUp({ email, password })
@@ -53,7 +74,7 @@ export const Auth: React.FC = () => {
                   required
                   type="email"
                   placeholder="operator@nexus.com"
-                  className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all"
+                  className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all placeholder:text-zinc-700"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -66,18 +87,25 @@ export const Auth: React.FC = () => {
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
                 <input
                   required
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all"
+                  className="w-full bg-zinc-950/50 border border-zinc-800 rounded-xl py-4 pl-12 pr-12 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all placeholder:text-zinc-700"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
 
             {error && (
-              <div className="text-rose-500 text-[10px] font-bold uppercase tracking-wider text-center pt-2">
-                [ ACCESS_DENIED ]: {error}
+              <div className="text-rose-500 text-[10px] font-bold uppercase tracking-wider text-center pt-2 px-4 leading-relaxed">
+                [ ERROR ]: {error}
               </div>
             )}
 
@@ -98,7 +126,10 @@ export const Auth: React.FC = () => {
 
           <div className="pt-4 text-center">
             <button
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setError(null);
+              }}
               className="text-zinc-600 hover:text-zinc-400 text-[10px] font-black uppercase tracking-widest transition-colors"
             >
               {isSignUp ? 'Existing Clearance? Login' : 'Request Clearance? Sign Up'}
