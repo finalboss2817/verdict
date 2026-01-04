@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
@@ -26,23 +25,15 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Always fetch the key fresh from the environment
-  const apiKey = process.env.API_KEY;
+  // Use the API key exclusively from process.env.API_KEY
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    throw new Error("API_KEY_MISSING");
-  }
-
-  // Create a new instance right before making the call as per guidelines
-  const ai = new GoogleGenAI({ apiKey });
-  
-  // Use gemini-3-flash-preview for text-based analysis tasks
+  // Use gemini-3-flash-preview for text tasks
   const modelName = 'gemini-3-flash-preview';
 
-  try {
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: `
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: `
 CONTEXT:
 Protocol: ${input.mode}
 Sale Type: ${input.ticketSize}
@@ -52,48 +43,37 @@ Deal Stage: ${input.stage}
 OBJECTION RECEIVED:
 "${input.objection}"
 
-Analyze this and provide a structured JSON verdict according to the schema.
-      `,
-      config: {
-        systemInstruction: getSystemInstruction(input.mode),
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            meaning: { type: Type.STRING, description: "The brutal truth behind the words." },
-            intentLevel: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
-            intentExplanation: { type: Type.STRING, description: "Why the intent is ranked this way." },
-            closeProbability: { type: Type.STRING, description: "Percentage range." },
-            bestResponse: { type: Type.STRING, description: "The exact message to send." },
-            whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING } },
-            followUpStrategy: {
-              type: Type.OBJECT,
-              properties: {
-                maxFollowUps: { type: Type.STRING },
-                timeGap: { type: Type.STRING },
-                stopCondition: { type: Type.STRING }
-              },
-              required: ["maxFollowUps", "timeGap", "stopCondition"]
+Analyze this and provide a structured JSON verdict.
+    `,
+    config: {
+      systemInstruction: getSystemInstruction(input.mode),
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          meaning: { type: Type.STRING, description: "The brutal truth behind the words." },
+          intentLevel: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+          intentExplanation: { type: Type.STRING, description: "One line explanation." },
+          closeProbability: { type: Type.STRING, description: "Percentage range." },
+          bestResponse: { type: Type.STRING, description: "The exact message to send." },
+          whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING } },
+          followUpStrategy: {
+            type: Type.OBJECT,
+            properties: {
+              maxFollowUps: { type: Type.STRING },
+              timeGap: { type: Type.STRING },
+              stopCondition: { type: Type.STRING }
             },
-            walkAwaySignal: { type: Type.STRING }
+            required: ["maxFollowUps", "timeGap", "stopCondition"]
           },
-          required: ["meaning", "intentLevel", "intentExplanation", "closeProbability", "bestResponse", "whatNotToSay", "followUpStrategy", "walkAwaySignal"]
-        }
+          walkAwaySignal: { type: Type.STRING }
+        },
+        required: ["meaning", "intentLevel", "intentExplanation", "closeProbability", "bestResponse", "whatNotToSay", "followUpStrategy", "walkAwaySignal"]
       }
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("Empty tactical stream received.");
-
-    return JSON.parse(text);
-  } catch (error: any) {
-    console.error("Gemini Execution Error:", error);
-    const msg = error.message || "";
-    
-    if (msg.includes("API key not found") || msg.includes("401") || msg.includes("invalid")) {
-      throw new Error("API_KEY_INVALID");
     }
-    
-    throw error;
-  }
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("No analysis returned from engine.");
+  return JSON.parse(text);
 }
