@@ -25,10 +25,11 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  const apiKey = process.env.API_KEY;
+  // Use bracket notation to prevent Vite/esbuild from statically replacing process.env.API_KEY
+  const env = (window as any).process?.env || (process as any).env;
+  const apiKey = env['API_KEY'];
   
   if (!apiKey) {
-    // If key is missing, we rely on the UI to trigger the openSelectKey dialog
     throw new Error("API_KEY_MISSING");
   }
 
@@ -81,7 +82,8 @@ Analyze this and provide a structured JSON verdict according to the schema.
 
     return JSON.parse(response.text);
   } catch (error: any) {
-    if (error.message?.includes("Requested entity was not found")) {
+    // Specifically handle the case where the key is invalid or doesn't have access to the model
+    if (error.message?.includes("Requested entity was not found") || error.message?.includes("API key not found")) {
       throw new Error("API_KEY_INVALID");
     }
     throw error;

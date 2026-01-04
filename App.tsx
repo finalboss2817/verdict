@@ -30,22 +30,24 @@ const App: React.FC = () => {
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
+  const checkApiKeyStatus = useCallback(async () => {
+    const env = (window as any).process?.env || (process as any).env;
+    const directKey = env['API_KEY'];
+    
+    if (typeof (window as any).aistudio !== 'undefined') {
+      const selected = await (window as any).aistudio.hasSelectedApiKey();
+      setHasApiKey(selected || !!directKey);
+    } else {
+      setHasApiKey(!!directKey);
+    }
+  }, []);
+
   useEffect(() => {
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
-    
-    // Check for API key if using Pro models
-    const checkApiKey = async () => {
-      if (typeof (window as any).aistudio !== 'undefined') {
-        const selected = await (window as any).aistudio.hasSelectedApiKey();
-        setHasApiKey(selected || !!process.env.API_KEY);
-      } else {
-        setHasApiKey(!!process.env.API_KEY);
-      }
-    };
-    checkApiKey();
-  }, []);
+    checkApiKeyStatus();
+  }, [checkApiKeyStatus]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -81,9 +83,14 @@ const App: React.FC = () => {
 
   const handleSelectKey = async () => {
     if (typeof (window as any).aistudio !== 'undefined') {
-      await (window as any).aistudio.openSelectKey();
-      setHasApiKey(true); // Assume success per instructions
-      setError(null);
+      try {
+        await (window as any).aistudio.openSelectKey();
+        // Per platform instructions, assume success after triggering the dialog
+        setHasApiKey(true);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to open key selector", err);
+      }
     }
   };
 
@@ -127,7 +134,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
         setHasApiKey(false);
-        setError("Operational clearance required. Please select a valid API key from a paid GCP project.");
+        setError("Operational clearance required. Access Gemini Pro via a valid API key from a paid GCP project.");
       } else {
         setError(err.message || 'Operational failure. Check system logs.');
       }
@@ -307,7 +314,7 @@ const App: React.FC = () => {
                 className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all"
               >
                 <Key size={14} />
-                ACTIVATE PRO ENGINE
+                AUTHORIZE PRO
               </button>
             )}
             <button 
@@ -438,15 +445,13 @@ const App: React.FC = () => {
                           <AlertCircle size={20} className="shrink-0" />
                           <p className="font-bold tracking-tight">{error}</p>
                         </div>
-                        {!hasApiKey && (
-                          <button 
-                            type="button"
-                            onClick={handleSelectKey}
-                            className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
-                          >
-                            Click to Authorize API Access
-                          </button>
-                        )}
+                        <button 
+                          type="button"
+                          onClick={handleSelectKey}
+                          className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
+                        >
+                          Click to Authorize API Access
+                        </button>
                       </div>
                     )}
                   </form>
