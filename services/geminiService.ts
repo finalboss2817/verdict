@@ -25,19 +25,18 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Direct access to process.env.API_KEY as per core guidelines
-  const apiKey = process.env.API_KEY;
+  // Safe accessor for the API key to prevent reference errors
+  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
   
-  if (!apiKey || apiKey === 'undefined') {
-    console.error("Critical: API_KEY not found in process.env");
+  if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+    console.error("Operational Block: API_KEY not detected in execution context.");
     throw new Error("API_KEY_MISSING");
   }
 
   const ai = new GoogleGenAI({ apiKey });
   
-  // We use Flash as the primary engine to ensure compatibility with standard keys
-  // while maintaining high-speed logic analysis.
-  const modelName = 'gemini-3-flash-preview';
+  // Using gemini-flash-latest as it is the most reliable model across all API key tiers (Free/Paid)
+  const modelName = 'gemini-flash-latest';
 
   try {
     const response = await ai.models.generateContent({
@@ -63,7 +62,7 @@ Analyze this and provide a structured JSON verdict according to the schema.
             meaning: { type: Type.STRING, description: "The brutal truth behind the words." },
             intentLevel: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
             intentExplanation: { type: Type.STRING, description: "Why the intent is ranked this way." },
-            closeProbability: { type: Type.STRING, description: "Percentage range (e.g., 10-20%)." },
+            closeProbability: { type: Type.STRING, description: "Percentage range (e.g., 5-15%)." },
             bestResponse: { type: Type.STRING, description: "The exact message to send." },
             whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING } },
             followUpStrategy: {
@@ -83,19 +82,20 @@ Analyze this and provide a structured JSON verdict according to the schema.
     });
 
     const text = response.text;
-    if (!text) throw new Error("The engine returned an empty response.");
+    if (!text) throw new Error("The engine connection was severed (empty response).");
 
     return JSON.parse(text);
   } catch (error: any) {
-    console.error("Gemini Engine Error:", error);
+    console.error("Strategic Link Failure:", error);
     const msg = error.message || "";
     
+    // Distinguish between key errors and model availability
     if (msg.includes("API key not found") || msg.includes("401") || msg.includes("invalid")) {
       throw new Error("API_KEY_INVALID");
     }
     
     if (msg.includes("model not found") || msg.includes("404")) {
-      throw new Error("The selected model is unavailable for your current key permissions.");
+      throw new Error("Operational Notice: 'gemini-flash-latest' is not accessible for your key tier.");
     }
 
     throw new Error(`Operational failure: ${msg}`);
