@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from './services/supabase';
 import { analyzeObjection } from './services/geminiService';
 import { Analysis, ObjectionInput, AnalysisMode } from './types';
@@ -27,10 +27,15 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
-  // Default to true to prevent flickering/scaring user before first attempt
   const [needsKeySelection, setNeedsKeySelection] = useState(false);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
+
+  // Check if we are in an environment that supports window.aistudio
+  const isAiStudioEnv = useMemo(() => {
+    return typeof (window as any).aistudio !== 'undefined' && 
+           typeof (window as any).aistudio.openSelectKey === 'function';
+  }, []);
 
   useEffect(() => {
     if (window.innerWidth >= 1024) {
@@ -71,18 +76,14 @@ const App: React.FC = () => {
   }, [session, fetchHistory]);
 
   const handleSelectKey = async () => {
-    const aiStudio = (window as any).aistudio;
-    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+    if (isAiStudioEnv) {
       try {
-        await aiStudio.openSelectKey();
+        await (window as any).aistudio.openSelectKey();
         setNeedsKeySelection(false);
         setError(null);
       } catch (err) {
         console.error("Key selection failed", err);
       }
-    } else {
-      // If window.aistudio doesn't exist, we can't do anything other than inform the user
-      setError("Strategic Intelligence failure: External API environment not detected. Ensure you are running in a supported environment.");
     }
   };
 
@@ -125,8 +126,12 @@ const App: React.FC = () => {
       if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        setNeedsKeySelection(true);
-        setError("Sovereign Clearance Denied: An active Gemini Pro API key is required. Please authorize via the secure protocol button.");
+        if (isAiStudioEnv) {
+          setNeedsKeySelection(true);
+          setError("Sovereign Clearance Denied: Please authorize access via the strategic key protocol.");
+        } else {
+          setError("Deployment Configuration Error: The API_KEY environment variable is missing or invalid. Please configure it in your deployment settings.");
+        }
       } else {
         setError(err.message || 'Operational failure. Check system logs.');
       }
@@ -300,7 +305,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex gap-2">
-            {needsKeySelection && (
+            {needsKeySelection && isAiStudioEnv && (
               <button 
                 onClick={handleSelectKey}
                 className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all animate-pulse"
@@ -437,7 +442,7 @@ const App: React.FC = () => {
                           <AlertCircle size={20} className="shrink-0" />
                           <p className="font-bold tracking-tight">{error}</p>
                         </div>
-                        {needsKeySelection && (
+                        {needsKeySelection && isAiStudioEnv && (
                           <button 
                             type="button"
                             onClick={handleSelectKey}

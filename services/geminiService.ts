@@ -25,14 +25,14 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use a new instance per call as per instructions for dynamic key updates
-  // Accessing process.env.API_KEY directly as it is the primary source
+  // Use the environment variable as specified in instructions
   const apiKey = process.env.API_KEY;
   
-  if (!apiKey) {
+  if (!apiKey || apiKey === 'undefined') {
     throw new Error("API_KEY_MISSING");
   }
 
+  // Create instance right before call for fresh key state
   const ai = new GoogleGenAI({ apiKey });
   
   try {
@@ -78,9 +78,12 @@ Analyze this and provide a structured JSON verdict according to the schema.
       }
     });
 
+    if (!response || !response.text) {
+      throw new Error("No response from strategic engine.");
+    }
+
     return JSON.parse(response.text);
   } catch (error: any) {
-    // If the error indicates a key issue, signal the UI to prompt for key selection
     if (error.message?.includes("Requested entity was not found") || 
         error.message?.includes("API key not found") || 
         error.message?.includes("invalid")) {
