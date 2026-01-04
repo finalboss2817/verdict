@@ -26,27 +26,25 @@ const App: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showAuthButton, setShowAuthButton] = useState(false);
+  const [hasAuthorizedKey, setHasAuthorizedKey] = useState(true);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
-  // Poll for aistudio availability
-  useEffect(() => {
-    const checkAiStudio = () => {
-      if ((window as any).aistudio) {
-        setShowAuthButton(true);
-      }
-    };
-    checkAiStudio();
-    const interval = setInterval(checkAiStudio, 1000);
-    return () => clearInterval(interval);
+  // Check key selection status on mount and when error occurs
+  const checkKeyStatus = useCallback(async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
+      const selected = await aiStudio.hasSelectedApiKey();
+      setHasAuthorizedKey(selected);
+    }
   }, []);
 
   useEffect(() => {
+    checkKeyStatus();
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
-  }, []);
+  }, [checkKeyStatus]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -86,12 +84,12 @@ const App: React.FC = () => {
       try {
         await aiStudio.openSelectKey();
         setError(null);
-        // Per platform instructions, assume success immediately
+        setHasAuthorizedKey(true); // Assume success after triggering dialog per instructions
       } catch (err) {
-        console.error("Authorization flow failed", err);
+        console.error("Authorization dialog failure", err);
       }
     } else {
-      setError("Authorization Protocol Missing: This environment does not support strategic key selection. Ensure API_KEY is set in deployment settings.");
+      setError("Strategic Link Failure: Manual environment variables required. Contact the system administrator.");
     }
   };
 
@@ -134,8 +132,8 @@ const App: React.FC = () => {
       if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        setError("Operational Clearance Required: No valid strategic key detected. Please use the 'Authorize' button or check deployment environment variables.");
-        if (!showAuthButton && (window as any).aistudio) setShowAuthButton(true);
+        setHasAuthorizedKey(false);
+        setError("Operational Clearance Required: No valid strategic key detected. Please establish a link using the button below.");
       } else {
         setError(err.message || 'Operational failure. Check system logs.');
       }
@@ -309,13 +307,13 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex gap-2">
-            {showAuthButton && (
+            {!hasAuthorizedKey && (
               <button 
                 onClick={handleSelectKey}
-                className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all"
+                className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all animate-pulse"
               >
                 <Key size={14} />
-                AUTHORIZE ENGINE
+                ESTABLISH LINK
               </button>
             )}
             <button 
@@ -446,13 +444,13 @@ const App: React.FC = () => {
                           <AlertCircle size={20} className="shrink-0" />
                           <p className="font-bold tracking-tight">{error}</p>
                         </div>
-                        {showAuthButton && (
+                        {!hasAuthorizedKey && (
                           <button 
                             type="button"
                             onClick={handleSelectKey}
                             className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
                           >
-                            Establish Strategic Link
+                            Authorize Strategic Clearance
                           </button>
                         )}
                       </div>

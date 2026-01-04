@@ -24,24 +24,27 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
   You are looking for the WIN, but only if it's a "Good Deal." Do not suggest discounts. Suggest value-clarification and leadership.`;
 };
 
+/**
+ * Retrieves the API key using a method that avoids static replacement by build tools.
+ */
 function getApiKey(): string | undefined {
-  // Check multiple possible locations for the injected API key
   const win = window as any;
+  // Prioritize runtime process.env, then global API_KEY, then build-time process.env
   return (
     win.process?.env?.API_KEY || 
-    (typeof process !== 'undefined' ? process.env?.API_KEY : undefined) ||
-    win.API_KEY
+    win.API_KEY ||
+    (typeof process !== 'undefined' ? process.env?.API_KEY : undefined)
   );
 }
 
 export async function analyzeObjection(input: ObjectionInput) {
   const apiKey = getApiKey();
   
-  if (!apiKey || apiKey === 'undefined') {
+  if (!apiKey || apiKey === 'undefined' || apiKey === '') {
     throw new Error("API_KEY_MISSING");
   }
 
-  // Create instance right before call for fresh key state
+  // Create new instance right before call for the most up-to-date key
   const ai = new GoogleGenAI({ apiKey });
   
   try {
@@ -94,10 +97,12 @@ Analyze this and provide a structured JSON verdict according to the schema.
     return JSON.parse(response.text);
   } catch (error: any) {
     const msg = error.message || "";
+    // Handle the specific "Requested entity was not found" error by signaling for key re-selection
     if (msg.includes("Requested entity was not found") || 
         msg.includes("API key not found") || 
         msg.includes("invalid") ||
-        msg.includes("API_KEY_INVALID")) {
+        msg.includes("403") ||
+        msg.includes("401")) {
       throw new Error("API_KEY_INVALID");
     }
     throw error;
