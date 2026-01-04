@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
@@ -25,16 +26,13 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use the standard environment variable path as specified in the core instructions
-  // We use a safe access pattern to avoid crashes if process is shimmed but env is missing
-  const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
-  
-  if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+  // Directly use process.env.API_KEY as per the primary SDK guidelines
+  if (!process.env.API_KEY || process.env.API_KEY === 'undefined') {
     throw new Error("API_KEY_MISSING");
   }
 
-  // Create new instance per call to ensure we use the freshest authorized key
-  const ai = new GoogleGenAI({ apiKey });
+  // Create new instance right before the call to ensure the latest API key is used
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     const response = await ai.models.generateContent({
@@ -79,14 +77,16 @@ Analyze this and provide a structured JSON verdict according to the schema.
       }
     });
 
-    if (!response || !response.text) {
+    // Extracting Text Output from GenerateContentResponse using .text property
+    const text = response.text;
+    if (!text) {
       throw new Error("Strategic link established but no data returned.");
     }
 
-    return JSON.parse(response.text);
+    return JSON.parse(text);
   } catch (error: any) {
     const msg = error.message || "";
-    // "Requested entity was not found" is the specific error code for an invalid/unauthorized key in Gemini 3 Pro
+    // Handle specific API key errors to trigger key selection reset in UI
     if (msg.includes("Requested entity was not found") || 
         msg.includes("API key not found") || 
         msg.includes("invalid") ||
