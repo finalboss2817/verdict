@@ -24,9 +24,18 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
   You are looking for the WIN, but only if it's a "Good Deal." Do not suggest discounts. Suggest value-clarification and leadership.`;
 };
 
+function getApiKey(): string | undefined {
+  // Check multiple possible locations for the injected API key
+  const win = window as any;
+  return (
+    win.process?.env?.API_KEY || 
+    (typeof process !== 'undefined' ? process.env?.API_KEY : undefined) ||
+    win.API_KEY
+  );
+}
+
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use the environment variable as specified in instructions
-  const apiKey = process.env.API_KEY;
+  const apiKey = getApiKey();
   
   if (!apiKey || apiKey === 'undefined') {
     throw new Error("API_KEY_MISSING");
@@ -79,14 +88,16 @@ Analyze this and provide a structured JSON verdict according to the schema.
     });
 
     if (!response || !response.text) {
-      throw new Error("No response from strategic engine.");
+      throw new Error("Strategic link established but no data returned.");
     }
 
     return JSON.parse(response.text);
   } catch (error: any) {
-    if (error.message?.includes("Requested entity was not found") || 
-        error.message?.includes("API key not found") || 
-        error.message?.includes("invalid")) {
+    const msg = error.message || "";
+    if (msg.includes("Requested entity was not found") || 
+        msg.includes("API key not found") || 
+        msg.includes("invalid") ||
+        msg.includes("API_KEY_INVALID")) {
       throw new Error("API_KEY_INVALID");
     }
     throw error;

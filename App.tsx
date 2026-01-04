@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './services/supabase';
 import { analyzeObjection } from './services/geminiService';
 import { Analysis, ObjectionInput, AnalysisMode } from './types';
@@ -26,15 +26,20 @@ const App: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
-  const [needsKeySelection, setNeedsKeySelection] = useState(false);
+  const [showAuthButton, setShowAuthButton] = useState(false);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
-  // Check if we are in an environment that supports window.aistudio
-  const isAiStudioEnv = useMemo(() => {
-    return typeof (window as any).aistudio !== 'undefined' && 
-           typeof (window as any).aistudio.openSelectKey === 'function';
+  // Poll for aistudio availability
+  useEffect(() => {
+    const checkAiStudio = () => {
+      if ((window as any).aistudio) {
+        setShowAuthButton(true);
+      }
+    };
+    checkAiStudio();
+    const interval = setInterval(checkAiStudio, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -76,14 +81,17 @@ const App: React.FC = () => {
   }, [session, fetchHistory]);
 
   const handleSelectKey = async () => {
-    if (isAiStudioEnv) {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       try {
-        await (window as any).aistudio.openSelectKey();
-        setNeedsKeySelection(false);
+        await aiStudio.openSelectKey();
         setError(null);
+        // Per platform instructions, assume success immediately
       } catch (err) {
-        console.error("Key selection failed", err);
+        console.error("Authorization flow failed", err);
       }
+    } else {
+      setError("Authorization Protocol Missing: This environment does not support strategic key selection. Ensure API_KEY is set in deployment settings.");
     }
   };
 
@@ -126,12 +134,8 @@ const App: React.FC = () => {
       if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        if (isAiStudioEnv) {
-          setNeedsKeySelection(true);
-          setError("Sovereign Clearance Denied: Please authorize access via the strategic key protocol.");
-        } else {
-          setError("Deployment Configuration Error: The API_KEY environment variable is missing or invalid. Please configure it in your deployment settings.");
-        }
+        setError("Operational Clearance Required: No valid strategic key detected. Please use the 'Authorize' button or check deployment environment variables.");
+        if (!showAuthButton && (window as any).aistudio) setShowAuthButton(true);
       } else {
         setError(err.message || 'Operational failure. Check system logs.');
       }
@@ -305,10 +309,10 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex gap-2">
-            {needsKeySelection && isAiStudioEnv && (
+            {showAuthButton && (
               <button 
                 onClick={handleSelectKey}
-                className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all animate-pulse"
+                className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all"
               >
                 <Key size={14} />
                 AUTHORIZE ENGINE
@@ -442,13 +446,13 @@ const App: React.FC = () => {
                           <AlertCircle size={20} className="shrink-0" />
                           <p className="font-bold tracking-tight">{error}</p>
                         </div>
-                        {needsKeySelection && isAiStudioEnv && (
+                        {showAuthButton && (
                           <button 
                             type="button"
                             onClick={handleSelectKey}
                             className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
                           >
-                            Click here to authorize strategic access
+                            Establish Strategic Link
                           </button>
                         )}
                       </div>
