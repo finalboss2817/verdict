@@ -2,52 +2,45 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Obtain API key exclusively from environment variable as per hard requirement
-  const apiKey = process.env.API_KEY;
+  // Initialize instance inside the function to ensure the latest environment variables are captured.
+  // We rely on the platform-injected process.env.API_KEY exclusively.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  if (!apiKey) {
-    throw new Error("Operational Link Failure: The analysis engine environment variable is not detected. Please verify system configuration.");
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
-  
-  // Use 'gemini-3-flash-preview' for rapid, seamless text analysis tasks
   const modelName = 'gemini-3-flash-preview';
 
-  const systemInstruction = `You are the "Sovereign Sales Analyst," an elite engine for interpreting objections in high-ticket environments. 
-Your tone is neutral, professional, and brutally direct. You are a diagnostic engine, not a coach.
+  const systemInstruction = `You are the "Sovereign Sales Analyst," a specialized engine for interpreting high-ticket sales objections.
+Your purpose is to provide brutal, diagnostic clarity. You are NOT a coach. You do NOT motivate.
 
-CORE PROTOCOLS:
-1. Never motivate, hype, or encourage "chasing."
-2. Never suggest discounts.
-3. Be brutally honest about low intent; call out dead deals immediately.
-4. Prefer losing a bad deal quickly over chasing a weak one for months.
-5. Avoid all sales clichés.
+OPERATIONAL PARAMETERS:
+1. Decode the hidden intent behind the text.
+2. Be brutally honest. If the deal is dead, call it.
+3. Protect the salesperson's authority and time at all costs.
+4. Never suggest discounts or "chasing" behavior.
+5. Mode VOID: Focus on disqualification.
+6. Mode NEXUS: Focus on high-status tactical clarity.
 
-MODES:
-- VOID: Disqualification focus. Look for reasons the deal is a waste of time.
-- NEXUS: Tactical bridge. Find the high-status path to clarity/close without desperation.`;
+STRUCTURE YOUR OUTPUT ACCORDING TO THE PROVIDED SCHEMA.`;
 
   const response = await ai.models.generateContent({
     model: modelName,
     contents: `
-OBJECTION SCRIPT: "${input.objection}"
+INPUT SCRIPT: "${input.objection}"
 CONTEXT: ${input.ticketSize} | Sector: ${input.product} | Stage: ${input.stage}
-CURRENT PROTOCOL: ${input.mode}
+PROTOCOL: ${input.mode}
 
-Execute the 7-step analysis strictly following the requested JSON structure.`,
+Perform interpretation and provide the 7-step analysis.`,
     config: {
       systemInstruction,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          meaning: { type: Type.STRING, description: "Brutally honest decoding of the hidden intent." },
+          meaning: { type: Type.STRING, description: "Brutally honest hidden intent." },
           intentLevel: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
-          intentExplanation: { type: Type.STRING, description: "One short line explanation for the intent rating." },
-          closeProbability: { type: Type.STRING, description: "Realistic percentage range based on behavior." },
-          bestResponse: { type: Type.STRING, description: "ONE short, calm, authority-driven message." },
-          whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING }, description: "1-2 common desperation mistakes." },
+          intentExplanation: { type: Type.STRING, description: "One short line explanation." },
+          closeProbability: { type: Type.STRING, description: "Percentage range based on behavior." },
+          bestResponse: { type: Type.STRING, description: "Short, calm, authority-driven message." },
+          whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING }, description: "1-2 common mistakes." },
           followUpStrategy: {
             type: Type.OBJECT,
             properties: {
@@ -57,7 +50,7 @@ Execute the 7-step analysis strictly following the requested JSON structure.`,
             },
             required: ["maxFollowUps", "timeGap", "stopCondition"]
           },
-          walkAwaySignal: { type: Type.STRING, description: "Explicit signal for when to disengage." }
+          walkAwaySignal: { type: Type.STRING, description: "Explicit disengagement signal." }
         },
         required: ["meaning", "intentLevel", "intentExplanation", "closeProbability", "bestResponse", "whatNotToSay", "followUpStrategy", "walkAwaySignal"]
       }
@@ -65,6 +58,6 @@ Execute the 7-step analysis strictly following the requested JSON structure.`,
   });
 
   const text = response.text;
-  if (!text) throw new Error("Tactical response empty. The engine failed to generate a verdict.");
+  if (!text) throw new Error("The engine failed to produce a verdict. Tactical link unstable.");
   return JSON.parse(text);
 }

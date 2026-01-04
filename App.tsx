@@ -91,8 +91,13 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Analysis Execution Failure:", err);
-      setError(err.message || "The engine encountered a strategic link failure.");
+      console.error("Strategic Failure:", err);
+      // Simplify error reporting for the user
+      if (err.message.includes("API Key") || err.message.includes("API key")) {
+        setError("Operational Link Failure: The analysis engine is currently unreachable. System configuration check required.");
+      } else {
+        setError(err.message || "An unexpected tactical error occurred during decoding.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -116,7 +121,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
 
-      <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-500 ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:opacity-0 lg:overflow-hidden'}`}>
+      <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:opacity-0 lg:overflow-hidden'}`}>
         <div className="p-6 border-b border-zinc-900 flex justify-between items-center">
           <div className="flex flex-col">
             <div className="flex items-center gap-2 text-zinc-100">
