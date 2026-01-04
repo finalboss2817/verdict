@@ -1,8 +1,5 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { ObjectionInput, IntentLevel } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { ObjectionInput } from "../types";
 
 const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
   const base = `You are the "Sovereign Sales Analyst," an elite engine for high-ticket consultants. 
@@ -28,6 +25,14 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey) {
+    throw new Error("CRITICAL FAILURE: Google Gemini API Key is missing. Please add API_KEY to environment variables.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: `
