@@ -26,24 +26,33 @@ const App: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Default to true so we don't nag the user unless an actual failure occurs
   const [hasAuthorizedKey, setHasAuthorizedKey] = useState(true);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
-  // Check key selection status on mount and when error occurs
+  // Proactively check key status from the platform
   const checkKeyStatus = useCallback(async () => {
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
-      const selected = await aiStudio.hasSelectedApiKey();
-      setHasAuthorizedKey(selected);
+      try {
+        const selected = await aiStudio.hasSelectedApiKey();
+        setHasAuthorizedKey(selected);
+      } catch (e) {
+        console.warn("Key status check failed", e);
+      }
     }
   }, []);
 
   useEffect(() => {
     checkKeyStatus();
+    // Poll for platform readiness
+    const interval = setInterval(checkKeyStatus, 5000);
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
+    return () => clearInterval(interval);
   }, [checkKeyStatus]);
 
   useEffect(() => {
@@ -84,12 +93,17 @@ const App: React.FC = () => {
       try {
         await aiStudio.openSelectKey();
         setError(null);
-        setHasAuthorizedKey(true); // Assume success after triggering dialog per instructions
+        setHasAuthorizedKey(true); // Proceed immediately as per instructions
       } catch (err) {
         console.error("Authorization dialog failure", err);
+        setError("Operational Protocol Failure: Could not initialize key selection.");
       }
     } else {
-      setError("Strategic Link Failure: Manual environment variables required. Contact the system administrator.");
+      // If we are not in the AI Studio environment, we can't show the dialog.
+      // But we shouldn't trap the user here; just clear the error and let them try again.
+      setError("System Initializing: Waiting for strategic link. If this persists, please ensure your environment variables are configured.");
+      // Check again after a short delay
+      setTimeout(checkKeyStatus, 1000);
     }
   };
 
@@ -133,7 +147,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
         setHasAuthorizedKey(false);
-        setError("Operational Clearance Required: No valid strategic key detected. Please establish a link using the button below.");
+        setError("Operational Clearance Required: No valid strategic key detected. Please establish a link using the Authorize button.");
       } else {
         setError(err.message || 'Operational failure. Check system logs.');
       }
@@ -450,7 +464,7 @@ const App: React.FC = () => {
                             onClick={handleSelectKey}
                             className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
                           >
-                            Authorize Strategic Clearance
+                            ESTABLISH STRATEGIC LINK
                           </button>
                         )}
                       </div>
