@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './services/supabase';
 import { analyzeObjection } from './services/geminiService';
@@ -7,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, Trash2, BookOpen, LogOut, User, Zap, Crosshair, Linkedin, Menu, X } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, Trash2, BookOpen, LogOut, User, Zap, Crosshair, Linkedin, Menu, X, Key } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -26,15 +25,26 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Default closed for mobile safety
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(true);
 
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
-  // Set default sidebar state based on screen size
   useEffect(() => {
     if (window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
+    
+    // Check for API key if using Pro models
+    const checkApiKey = async () => {
+      if (typeof (window as any).aistudio !== 'undefined') {
+        const selected = await (window as any).aistudio.hasSelectedApiKey();
+        setHasApiKey(selected || !!process.env.API_KEY);
+      } else {
+        setHasApiKey(!!process.env.API_KEY);
+      }
+    };
+    checkApiKey();
   }, []);
 
   useEffect(() => {
@@ -68,6 +78,14 @@ const App: React.FC = () => {
       fetchHistory();
     }
   }, [session, fetchHistory]);
+
+  const handleSelectKey = async () => {
+    if (typeof (window as any).aistudio !== 'undefined') {
+      await (window as any).aistudio.openSelectKey();
+      setHasApiKey(true); // Assume success per instructions
+      setError(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,10 +123,14 @@ const App: React.FC = () => {
       setActiveView('engine');
       
       setFormData(INITIAL_FORM_STATE);
-      // On mobile, close sidebar after selection
       if (window.innerWidth < 1024) setIsSidebarOpen(false);
     } catch (err: any) {
-      setError(err.message || 'Operational failure. Check system logs.');
+      if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
+        setHasApiKey(false);
+        setError("Operational clearance required. Please select a valid API key from a paid GCP project.");
+      } else {
+        setError(err.message || 'Operational failure. Check system logs.');
+      }
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -246,7 +268,7 @@ const App: React.FC = () => {
             </div>
             <div className="flex gap-1">
               <a 
-                href="https://www.linkedin.com/in/manish-trivedi-943331215?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app"
+                href="https://www.linkedin.com/in/manish-trivedi-943331215"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 text-zinc-600 hover:text-blue-400 transition-colors"
@@ -279,6 +301,15 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex gap-2">
+            {!hasApiKey && (
+              <button 
+                onClick={handleSelectKey}
+                className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all"
+              >
+                <Key size={14} />
+                ACTIVATE PRO ENGINE
+              </button>
+            )}
             <button 
               onClick={startNewVerdict}
               className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all shadow-xl active:scale-95"
@@ -402,9 +433,20 @@ const App: React.FC = () => {
                     </button>
 
                     {error && (
-                      <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-2xl flex gap-4 text-rose-400 text-xs items-center">
-                        <AlertCircle size={20} className="shrink-0" />
-                        <p className="font-bold tracking-tight">{error}</p>
+                      <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-2xl flex flex-col gap-3 text-rose-400 text-xs items-center text-center">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle size={20} className="shrink-0" />
+                          <p className="font-bold tracking-tight">{error}</p>
+                        </div>
+                        {!hasApiKey && (
+                          <button 
+                            type="button"
+                            onClick={handleSelectKey}
+                            className="text-[10px] font-black uppercase underline decoration-rose-500/50 hover:text-white transition-colors"
+                          >
+                            Click to Authorize API Access
+                          </button>
+                        )}
                       </div>
                     )}
                   </form>
