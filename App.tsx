@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './services/supabase';
 import { analyzeObjection } from './services/geminiService';
@@ -30,15 +31,14 @@ const App: React.FC = () => {
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
   const checkKeyStatus = useCallback(async () => {
-    // Check global process.env first
-    const envKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
-    
+    // 1. Check direct environment injection
+    const envKey = process.env.API_KEY;
     if (envKey && envKey !== 'undefined' && envKey !== '') {
       setShowKeyButton(false);
       return;
     }
 
-    // Fallback to platform-specific key selector bridge if available
+    // 2. Check for AI Studio Bridge
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
       try {
@@ -47,6 +47,9 @@ const App: React.FC = () => {
       } catch (e) {
         setShowKeyButton(true);
       }
+    } else {
+      // No bridge and no env key
+      setShowKeyButton(false);
     }
   }, []);
 
@@ -91,9 +94,10 @@ const App: React.FC = () => {
       try {
         await aiStudio.openSelectKey();
         setError(null);
+        // Procedurally assume success to bypass race conditions
         setShowKeyButton(false); 
       } catch (err) {
-        setError("Bridge Error: Portal initialization failed.");
+        setError("Operational Notice: API Key portal failed to initialize.");
       }
     }
   };
@@ -137,7 +141,13 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Verdict Generation Failed:", err);
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        setError("Clearance Error: No valid API_KEY detected. Verify your secret is named exactly 'API_KEY' in your environment settings.");
+        const aiStudio = (window as any).aistudio;
+        if (aiStudio) {
+          setError("Access Denied: Please use the 'AUTHORIZE ACCESS' button above to link your API Key.");
+          setShowKeyButton(true);
+        } else {
+          setError("Clearance Error: No valid API_KEY detected. Verify your secret is named exactly 'API_KEY' in your environment settings.");
+        }
       } else {
         setError(err.message || 'Operational failure. Strategic connection timed out.');
       }
@@ -253,7 +263,7 @@ const App: React.FC = () => {
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-zinc-900 rounded-lg text-zinc-600 transition-colors"><Menu size={18} /></button>
           <div className="flex gap-2">
             {showKeyButton && (
-              <button onClick={handleSelectKey} className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all animate-pulse">
+              <button onClick={handleSelectKey} className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 md:px-5 py-2 rounded-full text-[10px] md:text-xs font-black transition-all animate-pulse shadow-[0_0_20px_rgba(245,158,11,0.1)]">
                 <Key size={14} /> AUTHORIZE ACCESS
               </button>
             )}
@@ -322,7 +332,7 @@ const App: React.FC = () => {
                     {error && (
                       <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-2xl flex flex-col gap-3 text-rose-400 text-xs items-center text-center">
                         <div className="flex items-center gap-2"><AlertCircle size={20} /><p className="font-bold tracking-tight">{error}</p></div>
-                        <p className="text-[9px] uppercase tracking-tighter opacity-70 italic">Ensure your 'API_KEY' environment variable is correctly set and refresh the page to establish a link.</p>
+                        <p className="text-[9px] uppercase tracking-tighter opacity-70 italic">If the authorize button is visible at the top, please use it. Otherwise, ensure 'API_KEY' is saved in your environment variables.</p>
                       </div>
                     )}
                   </form>

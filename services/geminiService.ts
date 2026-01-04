@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
@@ -25,18 +26,18 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Safe accessor for the API key to prevent reference errors
-  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
+  // Always fetch the key fresh from the environment
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    console.error("Operational Block: API_KEY not detected in execution context.");
     throw new Error("API_KEY_MISSING");
   }
 
+  // Create a new instance right before making the call as per guidelines
   const ai = new GoogleGenAI({ apiKey });
   
-  // Using gemini-flash-latest as it is the most reliable model across all API key tiers (Free/Paid)
-  const modelName = 'gemini-flash-latest';
+  // Use gemini-3-flash-preview for text-based analysis tasks
+  const modelName = 'gemini-3-flash-preview';
 
   try {
     const response = await ai.models.generateContent({
@@ -62,7 +63,7 @@ Analyze this and provide a structured JSON verdict according to the schema.
             meaning: { type: Type.STRING, description: "The brutal truth behind the words." },
             intentLevel: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
             intentExplanation: { type: Type.STRING, description: "Why the intent is ranked this way." },
-            closeProbability: { type: Type.STRING, description: "Percentage range (e.g., 5-15%)." },
+            closeProbability: { type: Type.STRING, description: "Percentage range." },
             bestResponse: { type: Type.STRING, description: "The exact message to send." },
             whatNotToSay: { type: Type.ARRAY, items: { type: Type.STRING } },
             followUpStrategy: {
@@ -82,22 +83,17 @@ Analyze this and provide a structured JSON verdict according to the schema.
     });
 
     const text = response.text;
-    if (!text) throw new Error("The engine connection was severed (empty response).");
+    if (!text) throw new Error("Empty tactical stream received.");
 
     return JSON.parse(text);
   } catch (error: any) {
-    console.error("Strategic Link Failure:", error);
+    console.error("Gemini Execution Error:", error);
     const msg = error.message || "";
     
-    // Distinguish between key errors and model availability
     if (msg.includes("API key not found") || msg.includes("401") || msg.includes("invalid")) {
       throw new Error("API_KEY_INVALID");
     }
     
-    if (msg.includes("model not found") || msg.includes("404")) {
-      throw new Error("Operational Notice: 'gemini-flash-latest' is not accessible for your key tier.");
-    }
-
-    throw new Error(`Operational failure: ${msg}`);
+    throw error;
   }
 }
