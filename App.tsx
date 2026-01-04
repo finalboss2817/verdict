@@ -26,22 +26,18 @@ const App: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
-  // Show key button if no key in env OR if platform bridge is available
-  const [showKeyButton, setShowKeyButton] = useState(true);
-
+  const [showKeyButton, setShowKeyButton] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
   const checkKeyStatus = useCallback(async () => {
-    // Check if key exists in env first
-    const envKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
-    const aiStudio = (window as any).aistudio;
-    
-    if (envKey) {
+    // Rely on environment variable primarily
+    if (process.env.API_KEY) {
       setShowKeyButton(false);
       return;
     }
 
+    // Only show button if the specialized platform bridge is detected
+    const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
       try {
         const hasKey = await aiStudio.hasSelectedApiKey();
@@ -49,8 +45,6 @@ const App: React.FC = () => {
       } catch (e) {
         setShowKeyButton(true);
       }
-    } else {
-      setShowKeyButton(true); // Keep visible if we need one
     }
   }, []);
 
@@ -100,7 +94,7 @@ const App: React.FC = () => {
         setError("Bridge Error: Portal initialization failed.");
       }
     } else {
-      setError("Strategic Notice: Please add your key as 'API_KEY' in the environment settings.");
+      setError("Operational Notice: Key Bridge unavailable. Use environment settings for API_KEY.");
     }
   };
 
@@ -143,8 +137,7 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error("Verdict Generation Failed:", err);
       if (err.message === 'API_KEY_MISSING' || err.message === 'API_KEY_INVALID') {
-        setShowKeyButton(true);
-        setError("Clearance Denied: No valid API key detected. Please link your strategic key.");
+        setError("Clearance Error: No valid API_KEY found. Ensure 'API_KEY' is set in your environment variables.");
       } else {
         setError(err.message || 'Operational failure. Strategic connection timed out.');
       }
@@ -329,12 +322,7 @@ const App: React.FC = () => {
                     {error && (
                       <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-2xl flex flex-col gap-3 text-rose-400 text-xs items-center text-center">
                         <div className="flex items-center gap-2"><AlertCircle size={20} /><p className="font-bold tracking-tight">{error}</p></div>
-                        {showKeyButton && (
-                          <div className="space-y-2">
-                             <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API Key) is mandatory. If you have a key, ensure it is set as 'API_KEY' in your project secrets.</p>
-                             <button type="button" onClick={handleSelectKey} className="text-[10px] font-black uppercase underline hover:text-white transition-colors">AUTHORIZE PORTAL ACCESS</button>
-                          </div>
-                        )}
+                        <p className="text-[9px] uppercase tracking-tighter opacity-70">A strategic link (API_KEY) is required. Verify your environment variables or platform settings.</p>
                       </div>
                     )}
                   </form>

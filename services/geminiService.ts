@@ -25,17 +25,17 @@ const getSystemInstruction = (mode: 'VOID' | 'NEXUS') => {
 };
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Check both window.process.env and process.env to ensure coverage in different browser shims
-  const apiKey = (window as any).process?.env?.API_KEY || process.env.API_KEY;
+  // Use the environment variable directly as required by the platform
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    console.error("Strategic Link Failure: No API_KEY detected in environment.");
+    console.error("Strategic Link Failure: API_KEY is empty or undefined in the execution context.");
     throw new Error("API_KEY_MISSING");
   }
 
   const ai = new GoogleGenAI({ apiKey });
   
-  // We prioritize Pro for depth, but Flash is used as a high-speed, more accessible fallback
+  // Use gemini-3-pro-preview as the primary high-stakes engine
   const models = ["gemini-3-pro-preview", "gemini-3-flash-preview"];
   let lastError = null;
 
@@ -84,20 +84,20 @@ Analyze this and provide a structured JSON verdict according to the schema.
       });
 
       const text = response.text;
-      if (!text) throw new Error("Empty tactical stream.");
+      if (!text) throw new Error("Tactical response stream interrupted.");
 
       return JSON.parse(text);
     } catch (error: any) {
       lastError = error;
       const msg = error.message || "";
       
-      // If the specific model isn't found or allowed, move to the next one (Flash)
+      // Fallback logic for restricted or unavailable models
       if (msg.includes("not found") || msg.includes("404") || msg.includes("403")) {
-        console.warn(`Strategic Handshake: Model ${modelName} unavailable. Re-routing to secondary engine...`);
+        console.warn(`Strategic Link: Model ${modelName} unavailable. Attempting secondary routing...`);
         continue;
       }
       
-      // If it's a fundamental key error (401), stop immediately to show Auth UI
+      // Immediate exit for fundamental key issues
       if (msg.includes("API key not found") || msg.includes("invalid") || msg.includes("401")) {
         throw new Error("API_KEY_INVALID");
       }
@@ -106,6 +106,5 @@ Analyze this and provide a structured JSON verdict according to the schema.
     }
   }
 
-  // Final fallback for all model attempts
-  throw lastError || new Error("Strategic link failed to respond. Check key permissions.");
+  throw lastError || new Error("Strategic link failed. Please verify API_KEY in environment variables.");
 }
