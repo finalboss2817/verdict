@@ -91,7 +91,7 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Execution Failure:", err);
+      console.error("Analysis Execution Failure:", err);
       setError(err.message || "The engine encountered a strategic link failure.");
     } finally {
       setIsLoading(false);
@@ -188,20 +188,20 @@ const App: React.FC = () => {
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-600/30"></div>
                     
                     <div className="space-y-4">
-                       <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Analysis Protocol</label>
+                       <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Operation Protocol</label>
                        <div className="grid grid-cols-2 gap-4">
                           <button type="button" onClick={() => setFormData({...formData, mode: 'VOID'})} className={`group p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all duration-300 ${formData.mode === 'VOID' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-2xl shadow-emerald-500/10' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
                             <Zap size={24} className={formData.mode === 'VOID' ? 'animate-pulse' : ''} /> 
                             <div className="text-center">
                               <span className="block font-black text-[10px] uppercase tracking-widest">VOID</span>
-                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter">Sovereign Disqualification</span>
+                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter">Sovereign Focus</span>
                             </div>
                           </button>
                           <button type="button" onClick={() => setFormData({...formData, mode: 'NEXUS'})} className={`group p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all duration-300 ${formData.mode === 'NEXUS' ? 'bg-blue-500/10 border-blue-500/50 text-blue-500 shadow-2xl shadow-blue-500/10' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
                             <Crosshair size={24} className={formData.mode === 'NEXUS' ? 'animate-pulse' : ''} />
                             <div className="text-center">
                               <span className="block font-black text-[10px] uppercase tracking-widest">NEXUS</span>
-                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter">Tactical Conversion</span>
+                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter">Tactical Bridge</span>
                             </div>
                           </button>
                        </div>
