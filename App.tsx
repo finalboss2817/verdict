@@ -28,22 +28,23 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
-  // SILENT SELF-HEALING: Check link on mount
+  // AUTOMATIC INITIALIZATION: Check key on mount or session change
   useEffect(() => {
-    const autoHeal = async () => {
+    const ensureLink = async () => {
       const aiStudio = (window as any).aistudio;
-      if (aiStudio) {
+      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
         try {
           const hasKey = await aiStudio.hasSelectedApiKey();
           if (!hasKey) {
+            console.log("Establishing initial engine link...");
             await aiStudio.openSelectKey();
           }
         } catch (e) {
-          console.error("Auto-heal failed", e);
+          console.error("Initialization sync failed", e);
         }
       }
     };
-    if (session) autoHeal();
+    if (session) ensureLink();
   }, [session]);
 
   useEffect(() => {
@@ -73,6 +74,9 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
+  /**
+   * High-Authority Submission Handler with Recursive Self-Healing
+   */
   const handleSubmit = async (e?: React.FormEvent, retryCount = 0) => {
     if (e) e.preventDefault();
     if (!formData.objection.trim() || !session?.user) return;
@@ -81,6 +85,7 @@ const App: React.FC = () => {
     setError(null);
 
     try {
+      // Core Execution Attempt
       const result = await analyzeObjection(formData);
       
       const newEntry = {
@@ -110,21 +115,27 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error(`Operational Event:`, err);
+      console.error(`Engine Event [Attempt ${retryCount + 1}]:`, err);
       
-      // RECURSIVE RECOVERY: Try to fix the key and retry automatically
-      if ((err.message === "LINK_AUTH_FAILED" || err.message.includes("API Key")) && retryCount < 1) {
+      // AUTO-REPAIR PROTOCOL: Catching key-related failures
+      const isAuthError = err.message === "LINK_AUTH_FAILED" || 
+                          err.message.includes("API Key") || 
+                          err.message.includes("403") ||
+                          err.message.includes("entity");
+
+      if (isAuthError && retryCount < 1) {
         const aiStudio = (window as any).aistudio;
         if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+          console.warn("Handshake severed. Re-initializing engine link...");
           try {
             await aiStudio.openSelectKey();
-            // Automatically retry with the newly selected key
+            // Silent Retry: No user button click needed
             return handleSubmit(undefined, retryCount + 1);
           } catch (recoveryErr) {
             setError("The engine handshake was interrupted. Please try again.");
           }
         } else {
-          setError("Engine Link Critical Failure. Key selection protocol missing.");
+          setError("Engine Link Critical Failure. Handshake protocol not found.");
         }
       } else {
         setError(err.message || "Internal Operational Error.");
