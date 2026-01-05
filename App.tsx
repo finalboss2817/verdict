@@ -6,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Cpu, Link } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Link } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -24,26 +24,14 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<'engine' | 'protocol'>('engine');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isEngineAuthorized, setIsEngineAuthorized] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
   useEffect(() => {
-    // Initial Auth Check
-    const checkEngineAuth = async () => {
-      const aiStudio = (window as any).aistudio;
-      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
-        const authed = await aiStudio.hasSelectedApiKey();
-        setIsEngineAuthorized(authed);
-      } else {
-        setIsEngineAuthorized(true); // Assume true if outside AI Studio environment
-      }
-    };
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      checkEngineAuth().finally(() => setIsInitialLoading(false));
+      setIsInitialLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -67,16 +55,15 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  const handleSyncEngine = async () => {
+  const handleConnectEngine = async () => {
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       try {
         await aiStudio.openSelectKey();
-        setIsEngineAuthorized(true);
-        setError(null);
+        setError("Operational Link Synced. Please re-submit.");
         return true;
       } catch (e) {
-        console.error("Sync failed", e);
+        console.error("Connection handshake failed", e);
       }
     }
     return false;
@@ -118,26 +105,13 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Engine Tactical Error:", err);
-      const msg = (err.message || "").toLowerCase();
+      console.error("Engine failure:", err);
+      const msg = (err.message || "").toUpperCase();
 
-      // Aggressive detection of platform authorization errors
-      if (
-        msg.includes("403") || 
-        msg.includes("not found") || 
-        msg.includes("permission") || 
-        msg.includes("api key") ||
-        !process.env.API_KEY
-      ) {
-        setIsEngineAuthorized(false);
-        const fixed = await handleSyncEngine();
-        if (fixed) {
-          setError("Engine Link Synchronized. Re-submit to finalize verdict.");
-        } else {
-          setError("CRITICAL: Strategic link failed. Please use the 'Sync Engine' button to authorize your project.");
-        }
+      if (msg.includes("ENGINE_NOT_AUTHORIZED") || msg.includes("NOT FOUND") || msg.includes("AUTH_MISSING")) {
+        setError("LINK FAILURE: The engine requires manual synchronization. Click 'Sync Engine' above.");
       } else {
-        setError(err.message || "An unexpected tactical failure occurred.");
+        setError(err.message || "An unexpected operational failure occurred.");
       }
     } finally {
       setIsLoading(false);
@@ -153,39 +127,6 @@ const App: React.FC = () => {
   );
 
   if (!session) return <Auth />;
-
-  // Engine Authorization Terminal
-  if (isEngineAuthorized === false) {
-    return (
-      <div className="min-h-screen bg-[#070707] flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-zinc-900/50 border border-zinc-800 rounded-[40px] p-12 text-center space-y-8 backdrop-blur-3xl shadow-2xl relative">
-          <div className="absolute top-0 left-0 w-full h-1 bg-rose-500/50"></div>
-          <div className="flex justify-center">
-             <div className="w-16 h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center">
-               <Cpu size={32} className="text-rose-500 animate-pulse" />
-             </div>
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-black text-zinc-100 tracking-tight uppercase italic">Engine Link Severed</h2>
-            <p className="text-zinc-500 text-xs leading-relaxed px-4">
-              The Sovereign Analysis Engine requires an active platform handshake. Select a paid API key to restore operational capability.
-            </p>
-          </div>
-          <div className="space-y-4 pt-4">
-            <button 
-              onClick={handleSyncEngine}
-              className="w-full bg-zinc-100 hover:bg-white text-black font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs tracking-widest uppercase shadow-xl"
-            >
-              <Link size={16} /> Restore Link
-            </button>
-            <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider">
-              Requires <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Active Billing</a> enabled
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const currentAnalysis = history.find(a => a.id === currentAnalysisId);
 
@@ -250,8 +191,8 @@ const App: React.FC = () => {
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
           
           <div className="flex items-center gap-3">
-             <button onClick={handleSyncEngine} className="hidden sm:flex items-center gap-2 text-zinc-500 hover:text-zinc-100 text-[9px] font-black uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full transition-all">
-                <Link size={12} /> Sync Link
+             <button onClick={handleConnectEngine} className="hidden sm:flex items-center gap-2 text-zinc-500 hover:text-zinc-100 text-[9px] font-black uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full transition-all">
+                <Link size={12} /> Sync Engine
              </button>
              <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
                <PlusCircle size={14} /> New Verdict
@@ -269,7 +210,7 @@ const App: React.FC = () => {
                     <p className="text-zinc-600 text-[10px] md:text-xs font-bold uppercase tracking-[0.4em]">The Deal Disqualification Engine</p>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="bg-zinc-900/10 border border-zinc-800/50 rounded-[40px] p-6 md:p-12 space-y-10 relative overflow-hidden backdrop-blur-3xl">
+                  <form onSubmit={handleSubmit} className="bg-zinc-900/10 border border-zinc-800/50 rounded-[40px] p-6 md:p-12 space-y-10 relative overflow-hidden backdrop-blur-3xl shadow-2xl">
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-600/30"></div>
                     
                     <div className="space-y-4">
@@ -279,14 +220,14 @@ const App: React.FC = () => {
                             <Zap size={24} className={formData.mode === 'VOID' ? 'animate-pulse' : ''} /> 
                             <div className="text-center">
                               <span className="block font-black text-[10px] uppercase tracking-widest">VOID</span>
-                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter">Sovereign Focus</span>
+                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter text-zinc-500">Sovereign Focus</span>
                             </div>
                           </button>
                           <button type="button" onClick={() => setFormData({...formData, mode: 'NEXUS'})} className={`group p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all duration-300 ${formData.mode === 'NEXUS' ? 'bg-blue-500/10 border-blue-500/50 text-blue-500 shadow-2xl shadow-blue-500/10' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
                             <Crosshair size={24} className={formData.mode === 'NEXUS' ? 'animate-pulse' : ''} />
                             <div className="text-center">
                               <span className="block font-black text-[10px] uppercase tracking-widest">NEXUS</span>
-                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter">Tactical Bridge</span>
+                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter text-zinc-500">Tactical Bridge</span>
                             </div>
                           </button>
                        </div>
@@ -325,6 +266,7 @@ const App: React.FC = () => {
                         <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex items-center gap-4 text-rose-400 text-xs animate-in shake duration-500">
                           <AlertCircle size={24} className="shrink-0" />
                           <p className="font-bold uppercase tracking-tight">{error}</p>
+                          <button onClick={handleConnectEngine} className="ml-auto underline font-black">SYNC</button>
                         </div>
                       )}
                     </div>
