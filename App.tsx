@@ -55,15 +55,16 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  const handleConnectEngine = async () => {
+  const handleSyncEngine = async () => {
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       try {
         await aiStudio.openSelectKey();
-        setError("Operational Link Synced. Please re-submit.");
+        // RULE: Proceed immediately as if selection was successful to bypass race conditions
+        setError(null);
         return true;
       } catch (e) {
-        console.error("Connection handshake failed", e);
+        console.error("Manual sync failed", e);
       }
     }
     return false;
@@ -105,11 +106,11 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Engine failure:", err);
-      const msg = (err.message || "").toUpperCase();
+      console.error("Engine Tactical Error:", err);
+      const msg = (err.message || "").toLowerCase();
 
-      if (msg.includes("ENGINE_NOT_AUTHORIZED") || msg.includes("NOT FOUND") || msg.includes("AUTH_MISSING")) {
-        setError("LINK FAILURE: The engine requires manual synchronization. Click 'Sync Engine' above.");
+      if (msg.includes("403") || msg.includes("not found") || msg.includes("api key") || msg.includes("permission")) {
+        setError("Operational link required. Please click 'Sync Engine' to authorize your project.");
       } else {
         setError(err.message || "An unexpected operational failure occurred.");
       }
@@ -191,7 +192,7 @@ const App: React.FC = () => {
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
           
           <div className="flex items-center gap-3">
-             <button onClick={handleConnectEngine} className="hidden sm:flex items-center gap-2 text-zinc-500 hover:text-zinc-100 text-[9px] font-black uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full transition-all">
+             <button onClick={handleSyncEngine} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-100 text-[9px] font-black uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full transition-all">
                 <Link size={12} /> Sync Engine
              </button>
              <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
@@ -263,10 +264,10 @@ const App: React.FC = () => {
                       </button>
 
                       {error && (
-                        <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex items-center gap-4 text-rose-400 text-xs animate-in shake duration-500">
+                        <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex flex-col sm:flex-row items-center gap-4 text-rose-400 text-xs animate-in shake duration-500">
                           <AlertCircle size={24} className="shrink-0" />
-                          <p className="font-bold uppercase tracking-tight">{error}</p>
-                          <button onClick={handleConnectEngine} className="ml-auto underline font-black">SYNC</button>
+                          <p className="font-bold uppercase tracking-tight flex-1">{error}</p>
+                          <button onClick={handleSyncEngine} className="bg-rose-500/20 hover:bg-rose-500/40 text-rose-100 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Sync Engine</button>
                         </div>
                       )}
                     </div>
