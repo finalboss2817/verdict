@@ -5,11 +5,15 @@ import { ObjectionInput } from "../types";
  * Sovereign Analysis Engine - Optimized for instant verdicts and self-healing.
  */
 export async function analyzeObjection(input: ObjectionInput) {
+  // RULE: Always capture the key at the moment of execution
   const apiKey = process.env.API_KEY;
   
-  // Create fresh instance to ensure we use the most recent key available
+  // Explicitly check for empty key to prevent the SDK from throwing an uncatchable browser error
+  if (!apiKey || apiKey === "undefined" || apiKey.trim() === "") {
+    throw new Error("LINK_AUTH_FAILED");
+  }
+
   const ai = new GoogleGenAI({ apiKey });
-  
   const modelName = 'gemini-3-flash-preview';
 
   const systemInstruction = `You are the "Sovereign Sales Analyst." 
@@ -56,15 +60,17 @@ Output strictly JSON.`;
 
     return JSON.parse(response.text);
   } catch (error: any) {
+    console.error("Engine raw error:", error);
     const msg = (error.message || "").toLowerCase();
     
-    // Specifically catch "Requested entity was not found" or auth errors to trigger self-healing
+    // Catch common platform-level issues that require a key refresh
     if (
       msg.includes("api key") || 
       msg.includes("403") || 
       msg.includes("not found") || 
       msg.includes("permission") || 
-      msg.includes("authorized")
+      msg.includes("authorized") ||
+      msg.includes("entity")
     ) {
       throw new Error("LINK_AUTH_FAILED");
     }
