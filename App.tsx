@@ -6,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Cpu, Link } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
+  // Core Authentication & Session Setup
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -55,28 +56,36 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  const triggerKeyFix = async () => {
+  /**
+   * Aggressive Auto-Fix for API Link Failures
+   * This calls the platform's native key selector directly.
+   */
+  const handleFixLink = async () => {
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       try {
         await aiStudio.openSelectKey();
+        setError("Link Established. Re-submitting verdict...");
         return true;
-      } catch {
+      } catch (e) {
         return false;
       }
     }
     return false;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!formData.objection.trim() || !session?.user) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
+      // Step 1: Execute Analysis
       const result = await analyzeObjection(formData);
+      
+      // Step 2: Persist Verdict
       const newEntry = {
         timestamp: Date.now(),
         objection: formData.objection,
@@ -98,31 +107,27 @@ const App: React.FC = () => {
 
       if (dbError) throw dbError;
 
+      // Step 3: UI Update
       const savedAnalysis = data as Analysis;
       setHistory(prev => [savedAnalysis, ...prev]);
       setCurrentAnalysisId(savedAnalysis.id);
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Engine Tactical Error:", err);
-      const errMsg = (err.message || "").toLowerCase();
-      
-      // Aggressive detection of missing or invalid API keys
-      if (
-        errMsg.includes("api key") || 
-        errMsg.includes("not found") || 
-        errMsg.includes("403") || 
-        errMsg.includes("invalid") ||
-        !process.env.API_KEY
-      ) {
-        const fixed = await triggerKeyFix();
+      console.error("Strategic Engine Failure:", err);
+      const msg = (err.message || "").toUpperCase();
+
+      // Detection of auth-related errors that cause the "Unreachable" state
+      if (msg.includes("ENGINE_AUTH_FAILURE") || msg.includes("API_KEY") || msg.includes("403") || msg.includes("NOT FOUND")) {
+        const fixed = await handleFixLink();
         if (fixed) {
-          setError("Link Synchronized. Re-submit the objection to finalize the verdict.");
+          // Recursive retry: The key is now selected, try to submit one more time automatically
+          setTimeout(() => handleSubmit(), 500);
         } else {
-          setError("Strategic Link Failure: The engine is unreachable. Verify your environment settings.");
+          setError("CRITICAL: Operational link to the Sovereign Engine is severed. Manual key selection required via Platform settings.");
         }
       } else {
-        setError(err.message || "An unexpected failure occurred during analysis.");
+        setError(err.message || "An unexpected tactical error occurred during decoding.");
       }
     } finally {
       setIsLoading(false);
@@ -147,6 +152,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
 
+      {/* Sidebar - Tactical History */}
       <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:opacity-0 lg:overflow-hidden'}`}>
         <div className="p-6 border-b border-zinc-900 flex justify-between items-center">
           <div className="flex flex-col">
@@ -197,12 +203,22 @@ const App: React.FC = () => {
         </div>
       </aside>
 
+      {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full bg-[#070707] relative overflow-hidden">
         <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-[#070707]/95 backdrop-blur-md z-30">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
-          <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
-            <PlusCircle size={14} /> New Verdict
-          </button>
+          
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={handleFixLink}
+              className="hidden sm:flex items-center gap-2 text-zinc-600 hover:text-zinc-100 text-[9px] font-black uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full transition-all"
+            >
+              <Link size={12} /> Sync Engine
+            </button>
+            <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
+              <PlusCircle size={14} /> New Verdict
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto w-full">
