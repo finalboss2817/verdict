@@ -7,10 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
-      // Safe shim for process.env
-      if (typeof window.process === 'undefined') {
-        window.process = { env: {} };
-      }
+      // Safe shim that preserves existing process.env if injected by the platform
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
     </script>
     <style>
       body {
@@ -33,6 +32,14 @@
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #222;
+      }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-4px); }
+        75% { transform: translateX(4px); }
+      }
+      .animate-shake {
+        animation: shake 0.4s ease-in-out;
       }
     </style>
   <script type="importmap">
