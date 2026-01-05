@@ -5,15 +5,20 @@ import { ObjectionInput } from "../types";
  * Sovereign Analysis Engine - Optimized for instant verdicts and self-healing.
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  // RULE: Always capture the key at the moment of execution
   const apiKey = process.env.API_KEY;
   
-  // Explicitly check for empty key to prevent the SDK from throwing an uncatchable browser error
+  // Guard against empty/undefined keys to prevent the SDK from throwing a non-catchable browser error
   if (!apiKey || apiKey === "undefined" || apiKey.trim() === "") {
     throw new Error("LINK_AUTH_FAILED");
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  let ai;
+  try {
+    ai = new GoogleGenAI({ apiKey });
+  } catch (e) {
+    throw new Error("LINK_AUTH_FAILED");
+  }
+  
   const modelName = 'gemini-3-flash-preview';
 
   const systemInstruction = `You are the "Sovereign Sales Analyst." 
@@ -60,7 +65,6 @@ Output strictly JSON.`;
 
     return JSON.parse(response.text);
   } catch (error: any) {
-    console.error("Engine raw error:", error);
     const msg = (error.message || "").toLowerCase();
     
     // Catch common platform-level issues that require a key refresh

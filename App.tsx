@@ -28,6 +28,24 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
+  // SILENT SELF-HEALING: Check link on mount
+  useEffect(() => {
+    const autoHeal = async () => {
+      const aiStudio = (window as any).aistudio;
+      if (aiStudio) {
+        try {
+          const hasKey = await aiStudio.hasSelectedApiKey();
+          if (!hasKey) {
+            await aiStudio.openSelectKey();
+          }
+        } catch (e) {
+          console.error("Auto-heal failed", e);
+        }
+      }
+    };
+    if (session) autoHeal();
+  }, [session]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -55,9 +73,6 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  /**
-   * High-Performance Submission Flow with Integrated Self-Healing
-   */
   const handleSubmit = async (e?: React.FormEvent, retryCount = 0) => {
     if (e) e.preventDefault();
     if (!formData.objection.trim() || !session?.user) return;
@@ -66,21 +81,8 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      // 1. Pre-flight Check: Ensure the platform has a key selected
-      const aiStudio = (window as any).aistudio;
-      if (aiStudio && retryCount === 0) {
-        const hasKey = await aiStudio.hasSelectedApiKey();
-        if (!hasKey) {
-          console.log("Pre-flight: No key detected. Triggering auto-link...");
-          await aiStudio.openSelectKey();
-          // Platform rule: Assume success after trigger and proceed
-        }
-      }
-
-      // 2. Core Execution
       const result = await analyzeObjection(formData);
       
-      // 3. Persistent Storage
       const newEntry = {
         timestamp: Date.now(),
         objection: formData.objection,
@@ -108,27 +110,24 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error(`Operation Event [Retry ${retryCount}]:`, err);
+      console.error(`Operational Event:`, err);
       
-      // 4. SELF-HEALING LOGIC
-      // If we detect a link failure and we haven't tried too many times...
-      if (err.message === "LINK_AUTH_FAILED" && retryCount < 2) {
+      // RECURSIVE RECOVERY: Try to fix the key and retry automatically
+      if ((err.message === "LINK_AUTH_FAILED" || err.message.includes("API Key")) && retryCount < 1) {
         const aiStudio = (window as any).aistudio;
         if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
-          console.warn("Handshake severed. Re-initializing engine link automatically...");
           try {
             await aiStudio.openSelectKey();
-            // Recursive recovery: Try again immediately
+            // Automatically retry with the newly selected key
             return handleSubmit(undefined, retryCount + 1);
           } catch (recoveryErr) {
-            setError("Handshake sequence interrupted. Please try again.");
+            setError("The engine handshake was interrupted. Please try again.");
           }
         } else {
           setError("Engine Link Critical Failure. Key selection protocol missing.");
         }
       } else {
-        // Fallback for logic errors or repeated auth failures
-        setError(err.message || "The engine encountered an internal operational failure.");
+        setError(err.message || "Internal Operational Error.");
       }
     } finally {
       setIsLoading(false);
