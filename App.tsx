@@ -55,6 +55,19 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
+  const handleSeamlessAuth = async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+      try {
+        await aiStudio.openSelectKey();
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.objection.trim() || !session?.user) return;
@@ -91,12 +104,18 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Strategic Failure:", err);
-      // Simplify error reporting for the user
-      if (err.message.includes("API Key") || err.message.includes("API key")) {
-        setError("Operational Link Failure: The analysis engine is currently unreachable. System configuration check required.");
+      console.error("Execution Failure:", err);
+      const msg = err.message.toLowerCase();
+      // If the error is about a missing key, trigger the selection dialog automatically
+      if (msg.includes("api key") || msg.includes("not found") || msg.includes("403")) {
+        const success = await handleSeamlessAuth();
+        if (success) {
+          setError("Engine Link Established. Please re-submit to finalize verdict.");
+        } else {
+          setError("Operational Link Error: Could not establish a secure connection to the analysis engine.");
+        }
       } else {
-        setError(err.message || "An unexpected tactical error occurred during decoding.");
+        setError(err.message || "A strategic failure occurred during the analysis phase.");
       }
     } finally {
       setIsLoading(false);
