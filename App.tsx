@@ -6,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Link as LinkIcon } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -27,6 +27,26 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
+
+  // Passive Auto-Link: Try to establish engine connection silently on mount
+  useEffect(() => {
+    const tryEstablishLink = async () => {
+      const aiStudio = (window as any).aistudio;
+      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
+        try {
+          const hasKey = await aiStudio.hasSelectedApiKey();
+          if (!hasKey) {
+            console.log("Engine Link: Initiating Handshake...");
+            // Non-blocking call to open the key selector
+            aiStudio.openSelectKey().catch(() => {});
+          }
+        } catch (e) {
+          // Fail silently during auto-link to not disturb UX
+        }
+      }
+    };
+    if (session) tryEstablishLink();
+  }, [session]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -55,7 +75,7 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, retryCount = 0) => {
     if (e) e.preventDefault();
     if (!formData.objection.trim() || !session?.user) return;
 
@@ -92,24 +112,38 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error(`Engine Fault:`, err);
+      console.error(`Engine Event [Code: ${err.message}]:`, err);
       
-      if (err.message === "AUTH_KEY_MISSING") {
-        // Fallback for deployed environments without the special handshake
+      const isAuthIssue = err.message === "AUTH_KEY_MISSING" || err.message === "AUTH_KEY_INVALID";
+      
+      if (isAuthIssue && retryCount < 1) {
         const aiStudio = (window as any).aistudio;
         if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
-          await aiStudio.openSelectKey();
-          setError("Engine re-linked. Please try your request again.");
+          try {
+            await aiStudio.openSelectKey();
+            // Recursive Retry: Proceed assuming key selection was successful as per guidelines
+            return handleSubmit(undefined, retryCount + 1);
+          } catch (recoveryErr) {
+            setError("Handshake interrupted. Please link the engine manually.");
+          }
         } else {
-          setError("API Configuration Error: No API_KEY detected in your environment variables.");
+          setError("Engine Handshake Protocol Unavailable. Please check your environment variables.");
         }
-      } else if (err.message === "AUTH_KEY_INVALID") {
-        setError("Invalid API Key: Access to the intelligence engine was denied.");
       } else {
-        setError(err.message || "An unexpected error occurred within the engine.");
+        setError(err.message === "AUTH_KEY_MISSING" 
+          ? "Intelligence Engine disconnected. Please click 'Link Engine' to continue." 
+          : (err.message || "An operational fault occurred."));
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleManualLink = async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+      await aiStudio.openSelectKey();
+      setError(null);
     }
   };
 
@@ -185,6 +219,9 @@ const App: React.FC = () => {
         <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-[#070707]/95 backdrop-blur-md z-30">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
           <div className="flex items-center gap-3">
+             <button onClick={handleManualLink} className="hidden md:flex items-center gap-2 text-zinc-500 hover:text-zinc-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all">
+               <LinkIcon size={12} /> Link Engine
+             </button>
              <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
                <PlusCircle size={14} /> New Verdict
              </button>
@@ -256,7 +293,10 @@ const App: React.FC = () => {
                       {error && (
                         <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex flex-col md:flex-row items-center gap-4 text-rose-400 text-xs animate-shake">
                           <AlertCircle size={24} className="shrink-0" />
-                          <p className="font-bold uppercase tracking-tight flex-1">{error}</p>
+                          <div className="flex-1 space-y-2">
+                             <p className="font-bold uppercase tracking-tight">{error}</p>
+                             <button type="button" onClick={handleManualLink} className="text-[9px] font-black uppercase tracking-widest underline decoration-rose-500/40 underline-offset-4 hover:decoration-rose-500 transition-all">Link Engine Manually</button>
+                          </div>
                         </div>
                       )}
                     </div>

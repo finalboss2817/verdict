@@ -3,19 +3,25 @@ import { ObjectionInput } from "../types";
 
 /**
  * Sovereign Analysis Engine - High-Stakes Logic
+ * Optimized for resilience in deployed environments.
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  const apiKey = process.env.API_KEY;
+  // Use a temporary reference to avoid potential race conditions with process.env
+  const apiKey = (typeof process !== 'undefined' && process.env.API_KEY) || null;
   
-  // Clean guard to prevent SDK from throwing a fatal browser error
+  // Guard against falsy keys to prevent SDK fatal errors
   if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
     throw new Error("AUTH_KEY_MISSING");
   }
 
-  // Initializing with the available key
-  const ai = new GoogleGenAI({ apiKey });
-  
-  // Using Pro for deeper reasoning in sales psychology
+  // Create instance right before the call as per SDK guidelines
+  let ai;
+  try {
+    ai = new GoogleGenAI({ apiKey });
+  } catch (e) {
+    throw new Error("AUTH_KEY_INVALID");
+  }
+
   const modelName = 'gemini-3-pro-preview';
 
   const systemInstruction = `You are the "Sovereign Sales Analyst." 
@@ -65,8 +71,15 @@ Output strictly JSON.`;
   } catch (error: any) {
     const msg = (error.message || "").toLowerCase();
     
-    // Categorize auth errors for the UI
-    if (msg.includes("api key") || msg.includes("403") || msg.includes("invalid")) {
+    // Catch platform-level authorization issues
+    if (
+      msg.includes("api key") || 
+      msg.includes("403") || 
+      msg.includes("not found") || 
+      msg.includes("permission") || 
+      msg.includes("authorized") ||
+      msg.includes("entity")
+    ) {
       throw new Error("AUTH_KEY_INVALID");
     }
     
