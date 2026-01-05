@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use a fresh instance with the latest injected key as per guidelines
+  // Always create a fresh instance to use the most current environment key
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const modelName = 'gemini-3-flash-preview';
@@ -18,7 +18,7 @@ Protocol: Protect the salesperson's time and status. No fluff. No coaching.`;
     model: modelName,
     contents: `
 OBJECTION: "${input.objection}"
-CONTEXT: ${input.ticketSize} | ${input.product} | ${input.stage}
+CONTEXT: ${input.ticketSize} | Sector: ${input.product} | Stage: ${input.stage}
 MODE: ${input.mode}
 
 Generate the 7-step JSON analysis.`,
@@ -51,7 +51,7 @@ Generate the 7-step JSON analysis.`,
   });
 
   if (!response.text) {
-    throw new Error("Empty engine response.");
+    throw new Error("EMPTY_RESPONSE");
   }
 
   return JSON.parse(response.text);

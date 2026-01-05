@@ -55,13 +55,13 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  const handleSeamlessAuth = async () => {
+  const triggerKeyFix = async () => {
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       try {
         await aiStudio.openSelectKey();
         return true;
-      } catch (e) {
+      } catch {
         return false;
       }
     }
@@ -104,18 +104,25 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Execution Failure:", err);
-      const msg = err.message.toLowerCase();
-      // If the error is about a missing key, trigger the selection dialog automatically
-      if (msg.includes("api key") || msg.includes("not found") || msg.includes("403")) {
-        const success = await handleSeamlessAuth();
-        if (success) {
-          setError("Engine Link Established. Please re-submit to finalize verdict.");
+      console.error("Engine Tactical Error:", err);
+      const errMsg = (err.message || "").toLowerCase();
+      
+      // Aggressive detection of missing or invalid API keys
+      if (
+        errMsg.includes("api key") || 
+        errMsg.includes("not found") || 
+        errMsg.includes("403") || 
+        errMsg.includes("invalid") ||
+        !process.env.API_KEY
+      ) {
+        const fixed = await triggerKeyFix();
+        if (fixed) {
+          setError("Link Synchronized. Re-submit the objection to finalize the verdict.");
         } else {
-          setError("Operational Link Error: Could not establish a secure connection to the analysis engine.");
+          setError("Strategic Link Failure: The engine is unreachable. Verify your environment settings.");
         }
       } else {
-        setError(err.message || "A strategic failure occurred during the analysis phase.");
+        setError(err.message || "An unexpected failure occurred during analysis.");
       }
     } finally {
       setIsLoading(false);
