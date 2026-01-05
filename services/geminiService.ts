@@ -2,20 +2,21 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 /**
- * Sovereign Analysis Engine - Optimized for instant verdicts and self-healing.
+ * Sovereign Analysis Engine - High-Stakes Logic
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  // Capture the key immediately
   const apiKey = process.env.API_KEY;
   
-  // Guard against falsy keys BEFORE calling the constructor to avoid hard SDK errors
+  // Clean guard to prevent SDK from throwing a fatal browser error
   if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
-    throw new Error("LINK_AUTH_FAILED");
+    throw new Error("AUTH_KEY_MISSING");
   }
 
-  // Create instance right before use
+  // Initializing with the available key
   const ai = new GoogleGenAI({ apiKey });
-  const modelName = 'gemini-3-flash-preview';
+  
+  // Using Pro for deeper reasoning in sales psychology
+  const modelName = 'gemini-3-pro-preview';
 
   const systemInstruction = `You are the "Sovereign Sales Analyst." 
 Your job is to decode human intent from sales objections.
@@ -26,9 +27,10 @@ Output strictly JSON.`;
   try {
     const response = await ai.models.generateContent({
       model: modelName,
-      contents: `OBJECTION: "${input.objection}" | CONTEXT: ${input.ticketSize} at ${input.stage} phase. | MODE: ${input.mode}`,
+      contents: `OBJECTION: "${input.objection}" | CONTEXT: ${input.ticketSize} at ${input.stage} phase. | MODE: ${input.mode} | PRODUCT: ${input.product}`,
       config: {
         systemInstruction,
+        thinkingConfig: { thinkingBudget: 2000 },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -63,16 +65,9 @@ Output strictly JSON.`;
   } catch (error: any) {
     const msg = (error.message || "").toLowerCase();
     
-    // Catch common platform auth issues
-    if (
-      msg.includes("api key") || 
-      msg.includes("403") || 
-      msg.includes("not found") || 
-      msg.includes("permission") || 
-      msg.includes("authorized") ||
-      msg.includes("entity")
-    ) {
-      throw new Error("LINK_AUTH_FAILED");
+    // Categorize auth errors for the UI
+    if (msg.includes("api key") || msg.includes("403") || msg.includes("invalid")) {
+      throw new Error("AUTH_KEY_INVALID");
     }
     
     throw error;
