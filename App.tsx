@@ -24,15 +24,26 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<'engine' | 'protocol'>('engine');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isEngineAuthorized, setIsEngineAuthorized] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
 
-  // Core Authentication & Session Setup
   useEffect(() => {
+    // Initial Auth Check
+    const checkEngineAuth = async () => {
+      const aiStudio = (window as any).aistudio;
+      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
+        const authed = await aiStudio.hasSelectedApiKey();
+        setIsEngineAuthorized(authed);
+      } else {
+        setIsEngineAuthorized(true); // Assume true if outside AI Studio environment
+      }
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setIsInitialLoading(false);
+      checkEngineAuth().finally(() => setIsInitialLoading(false));
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -56,19 +67,16 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  /**
-   * Aggressive Auto-Fix for API Link Failures
-   * This calls the platform's native key selector directly.
-   */
-  const handleFixLink = async () => {
+  const handleSyncEngine = async () => {
     const aiStudio = (window as any).aistudio;
     if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
       try {
         await aiStudio.openSelectKey();
-        setError("Link Established. Re-submitting verdict...");
+        setIsEngineAuthorized(true);
+        setError(null);
         return true;
       } catch (e) {
-        return false;
+        console.error("Sync failed", e);
       }
     }
     return false;
@@ -82,10 +90,7 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      // Step 1: Execute Analysis
       const result = await analyzeObjection(formData);
-      
-      // Step 2: Persist Verdict
       const newEntry = {
         timestamp: Date.now(),
         objection: formData.objection,
@@ -107,27 +112,32 @@ const App: React.FC = () => {
 
       if (dbError) throw dbError;
 
-      // Step 3: UI Update
       const savedAnalysis = data as Analysis;
       setHistory(prev => [savedAnalysis, ...prev]);
       setCurrentAnalysisId(savedAnalysis.id);
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error("Strategic Engine Failure:", err);
-      const msg = (err.message || "").toUpperCase();
+      console.error("Engine Tactical Error:", err);
+      const msg = (err.message || "").toLowerCase();
 
-      // Detection of auth-related errors that cause the "Unreachable" state
-      if (msg.includes("ENGINE_AUTH_FAILURE") || msg.includes("API_KEY") || msg.includes("403") || msg.includes("NOT FOUND")) {
-        const fixed = await handleFixLink();
+      // Aggressive detection of platform authorization errors
+      if (
+        msg.includes("403") || 
+        msg.includes("not found") || 
+        msg.includes("permission") || 
+        msg.includes("api key") ||
+        !process.env.API_KEY
+      ) {
+        setIsEngineAuthorized(false);
+        const fixed = await handleSyncEngine();
         if (fixed) {
-          // Recursive retry: The key is now selected, try to submit one more time automatically
-          setTimeout(() => handleSubmit(), 500);
+          setError("Engine Link Synchronized. Re-submit to finalize verdict.");
         } else {
-          setError("CRITICAL: Operational link to the Sovereign Engine is severed. Manual key selection required via Platform settings.");
+          setError("CRITICAL: Strategic link failed. Please use the 'Sync Engine' button to authorize your project.");
         }
       } else {
-        setError(err.message || "An unexpected tactical error occurred during decoding.");
+        setError(err.message || "An unexpected tactical failure occurred.");
       }
     } finally {
       setIsLoading(false);
@@ -144,6 +154,39 @@ const App: React.FC = () => {
 
   if (!session) return <Auth />;
 
+  // Engine Authorization Terminal
+  if (isEngineAuthorized === false) {
+    return (
+      <div className="min-h-screen bg-[#070707] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-zinc-900/50 border border-zinc-800 rounded-[40px] p-12 text-center space-y-8 backdrop-blur-3xl shadow-2xl relative">
+          <div className="absolute top-0 left-0 w-full h-1 bg-rose-500/50"></div>
+          <div className="flex justify-center">
+             <div className="w-16 h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center">
+               <Cpu size={32} className="text-rose-500 animate-pulse" />
+             </div>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-zinc-100 tracking-tight uppercase italic">Engine Link Severed</h2>
+            <p className="text-zinc-500 text-xs leading-relaxed px-4">
+              The Sovereign Analysis Engine requires an active platform handshake. Select a paid API key to restore operational capability.
+            </p>
+          </div>
+          <div className="space-y-4 pt-4">
+            <button 
+              onClick={handleSyncEngine}
+              className="w-full bg-zinc-100 hover:bg-white text-black font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs tracking-widest uppercase shadow-xl"
+            >
+              <Link size={16} /> Restore Link
+            </button>
+            <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider">
+              Requires <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Active Billing</a> enabled
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const currentAnalysis = history.find(a => a.id === currentAnalysisId);
 
   return (
@@ -152,7 +195,6 @@ const App: React.FC = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
       )}
 
-      {/* Sidebar - Tactical History */}
       <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:opacity-0 lg:overflow-hidden'}`}>
         <div className="p-6 border-b border-zinc-900 flex justify-between items-center">
           <div className="flex flex-col">
@@ -203,21 +245,17 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full bg-[#070707] relative overflow-hidden">
         <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-[#070707]/95 backdrop-blur-md z-30">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
           
           <div className="flex items-center gap-3">
-            <button 
-              onClick={handleFixLink}
-              className="hidden sm:flex items-center gap-2 text-zinc-600 hover:text-zinc-100 text-[9px] font-black uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full transition-all"
-            >
-              <Link size={12} /> Sync Engine
-            </button>
-            <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
-              <PlusCircle size={14} /> New Verdict
-            </button>
+             <button onClick={handleSyncEngine} className="hidden sm:flex items-center gap-2 text-zinc-500 hover:text-zinc-100 text-[9px] font-black uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full transition-all">
+                <Link size={12} /> Sync Link
+             </button>
+             <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
+               <PlusCircle size={14} /> New Verdict
+             </button>
           </div>
         </header>
 
