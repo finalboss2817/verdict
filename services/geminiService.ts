@@ -2,18 +2,21 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 /**
- * Sovereign Analysis Engine - Direct Execution
+ * Sovereign Analysis Engine - Flash Tier Execution
+ * Optimized for standard/free tier stability.
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  // Direct access to the platform-provided key
   const apiKey = process.env.API_KEY;
   
-  if (!apiKey) {
-    throw new Error("KEY_REQUIRED");
+  if (!apiKey || apiKey === "undefined") {
+    throw new Error("AUTH_KEY_MISSING");
   }
 
+  // Atomic instantiation
   const ai = new GoogleGenAI({ apiKey });
-  const modelName = 'gemini-3-pro-preview';
+  
+  // Using Flash to bypass Paid Billing Project requirements of the Pro model
+  const model = 'gemini-3-flash-preview';
 
   const systemInstruction = `You are the "Sovereign Sales Analyst." 
 Your job is to decode human intent from sales objections.
@@ -23,11 +26,11 @@ Output strictly JSON.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: modelName,
+      model,
       contents: `OBJECTION: "${input.objection}" | CONTEXT: ${input.ticketSize} at ${input.stage} phase. | MODE: ${input.mode} | PRODUCT: ${input.product}`,
       config: {
         systemInstruction,
-        thinkingConfig: { thinkingBudget: 1024 },
+        // Removed thinking budget to maximize compatibility with non-paid tiers
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -54,12 +57,21 @@ Output strictly JSON.`;
       }
     });
 
-    return JSON.parse(response.text || '{}');
+    const text = response.text;
+    if (!text) throw new Error("EMPTY_OUTPUT");
+    
+    return JSON.parse(text);
   } catch (error: any) {
     const msg = (error.message || "").toLowerCase();
-    if (msg.includes("403") || msg.includes("api key") || msg.includes("not found")) {
-      throw new Error("AUTH_FAIL");
+    
+    if (msg.includes("429") || msg.includes("quota")) {
+      throw new Error("RATE_LIMIT");
     }
+    
+    if (msg.includes("403") || msg.includes("permission") || msg.includes("key")) {
+      throw new Error("AUTH_INVALID");
+    }
+
     throw error;
   }
 }
