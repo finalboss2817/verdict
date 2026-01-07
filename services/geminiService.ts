@@ -2,19 +2,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 /**
- * Sovereign Analysis Engine
- * Handles connection to Google Gemini 3 Pro.
+ * Sovereign Analysis Engine - Atomic Execution
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  // Direct environment variable access
+  // Always retrieve the key at the moment of execution to catch injected values
   const apiKey = process.env.API_KEY;
   
-  // Guard against missing key to prevent hard SDK crashes
-  if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
+  if (!apiKey) {
     throw new Error("AUTH_KEY_MISSING");
   }
 
-  // Late initialization ensures we use the most current environment state
+  // Create new instance for every request to ensure fresh context/key
   const ai = new GoogleGenAI({ apiKey });
   const modelName = 'gemini-3-pro-preview';
 
@@ -57,20 +55,16 @@ Output strictly JSON.`;
       }
     });
 
-    const text = response.text;
-    if (!text) throw new Error("EMPTY_ENGINE_OUTPUT");
-
-    return JSON.parse(text);
+    if (!response.text) throw new Error("EMPTY_RESPONSE");
+    return JSON.parse(response.text);
   } catch (error: any) {
     const msg = (error.message || "").toLowerCase();
     
-    // Check for specific "entity not found" error requiring re-auth
+    // Rule-based error categorization
     if (msg.includes("requested entity was not found")) {
       throw new Error("ENTITY_NOT_FOUND");
     }
-
-    // Handle general permission/auth issues
-    if (msg.includes("api key") || msg.includes("403") || msg.includes("not found") || msg.includes("invalid")) {
+    if (msg.includes("api key") || msg.includes("403") || msg.includes("invalid")) {
       throw new Error("AUTH_KEY_INVALID");
     }
     

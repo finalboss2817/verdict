@@ -6,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Link as LinkIcon, Settings } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, ShieldAlert, Cpu } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -24,23 +24,46 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<'engine' | 'protocol'>('engine');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isEngineReady, setIsEngineReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
+
+  // Mandatory Key Check on Load
+  useEffect(() => {
+    const checkEngine = async () => {
+      const aiStudio = (window as any).aistudio;
+      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
+        const hasKey = await aiStudio.hasSelectedApiKey();
+        setIsEngineReady(hasKey);
+      } else {
+        // Fallback for non-AI Studio environments
+        setIsEngineReady(!!process.env.API_KEY);
+      }
+    };
+    checkEngine();
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setIsInitialLoading(false);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
-
     if (window.innerWidth >= 1024) setIsSidebarOpen(true);
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleLinkEngine = async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+      await aiStudio.openSelectKey();
+      setIsEngineReady(true);
+      setError(null);
+    }
+  };
 
   const fetchHistory = useCallback(async () => {
     if (!session?.user) return;
@@ -54,20 +77,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
-
-  const handleLinkEngine = async () => {
-    const aiStudio = (window as any).aistudio;
-    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
-      try {
-        await aiStudio.openSelectKey();
-        setError(null);
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
-    return false;
-  };
 
   const handleSubmit = async (e?: React.FormEvent, retryCount = 0) => {
     if (e) e.preventDefault();
@@ -108,33 +117,22 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error(`Engine Exception:`, err);
       
-      // Auto-recovery for platform-specific key issues
       const isAuthIssue = err.message === "AUTH_KEY_MISSING" || 
                           err.message === "AUTH_KEY_INVALID" || 
                           err.message === "ENTITY_NOT_FOUND";
 
       if (isAuthIssue && retryCount < 1) {
-        const linked = await handleLinkEngine();
-        if (linked) {
-          // Proceed with silent retry assuming key was selected
-          return handleSubmit(undefined, retryCount + 1);
-        }
+        await handleLinkEngine();
+        return handleSubmit(undefined, retryCount + 1);
       }
 
-      // Final Error State Messaging
-      if (err.message === "AUTH_KEY_MISSING") {
-        setError("API CONFIGURATION MISSING: Ensure 'API_KEY' is set in your environment variables.");
-      } else if (err.message === "AUTH_KEY_INVALID") {
-        setError("INVALID API KEY: The provided engine key was rejected by the server.");
-      } else {
-        setError(err.message || "An unexpected engine fault occurred.");
-      }
+      setError(err.message === "AUTH_KEY_MISSING" 
+        ? "Engine Disconnected. Please re-link via the header settings." 
+        : (err.message || "Operation failed."));
     } finally {
       setIsLoading(false);
     }
   };
-
-  const handleLogout = () => supabase.auth.signOut();
 
   if (isInitialLoading) return (
     <div className="min-h-screen bg-[#070707] flex items-center justify-center">
@@ -143,6 +141,32 @@ const App: React.FC = () => {
   );
 
   if (!session) return <Auth />;
+
+  // Engine Connection Splash
+  if (isEngineReady === false) return (
+    <div className="min-h-screen bg-[#070707] flex items-center justify-center p-6">
+      <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[40px] p-12 text-center space-y-8 shadow-2xl">
+        <div className="w-20 h-20 bg-zinc-950 border border-zinc-800 rounded-3xl flex items-center justify-center mx-auto">
+          <Cpu size={40} className="text-zinc-600 animate-pulse" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black italic uppercase tracking-tighter text-white">Initialize Engine</h2>
+          <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest leading-relaxed">
+            Sovereign logic requires a secure link to the Gemini intelligence cluster.
+          </p>
+        </div>
+        <button 
+          onClick={handleLinkEngine}
+          className="w-full bg-white text-black font-black py-5 rounded-2xl flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-95 transition-all text-xs tracking-widest uppercase shadow-xl"
+        >
+          <Zap size={16} fill="black" /> Connect Intelligence
+        </button>
+        <p className="text-[10px] text-zinc-700 font-bold uppercase tracking-widest">
+          Requires a paid project API key (billing enabled).
+        </p>
+      </div>
+    </div>
+  );
 
   const currentAnalysis = history.find(a => a.id === currentAnalysisId);
 
@@ -197,7 +221,7 @@ const App: React.FC = () => {
               <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center"><User size={16} className="text-zinc-500" /></div>
               <span className="text-[10px] font-black text-zinc-500 uppercase truncate max-w-[100px]">{session.user.email?.split('@')[0]}</span>
             </div>
-            <button onClick={handleLogout} className="p-2 text-zinc-600 hover:text-rose-400" title="Logout"><LogOut size={16} /></button>
+            <button onClick={() => supabase.auth.signOut()} className="p-2 text-zinc-600 hover:text-rose-400"><LogOut size={16} /></button>
           </div>
         </div>
       </aside>
@@ -207,7 +231,7 @@ const App: React.FC = () => {
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
           <div className="flex items-center gap-3">
              <button onClick={handleLinkEngine} className="hidden md:flex items-center gap-2 text-zinc-500 hover:text-zinc-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all">
-               <Settings size={12} /> Config Engine
+               <Zap size={12} /> Re-Link Engine
              </button>
              <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
                <PlusCircle size={14} /> New Verdict
@@ -219,7 +243,7 @@ const App: React.FC = () => {
           {activeView === 'protocol' ? <Protocol /> : (
             <div className="max-w-4xl mx-auto p-4 md:p-6 lg:p-12">
               {(!currentAnalysisId || !currentAnalysis) ? (
-                <div className="space-y-12 animate-in fade-in slide-in-from-top-4 duration-1000">
+                <div className="space-y-12">
                   <div className="text-center space-y-4">
                     <h2 className="text-5xl md:text-7xl font-black text-zinc-100 tracking-tighter italic uppercase">VERDICT</h2>
                     <p className="text-zinc-600 text-[10px] md:text-xs font-bold uppercase tracking-[0.4em]">The Deal Disqualification Engine</p>
@@ -233,24 +257,18 @@ const App: React.FC = () => {
                        <div className="grid grid-cols-2 gap-4">
                           <button type="button" onClick={() => setFormData({...formData, mode: 'VOID'})} className={`group p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all duration-300 ${formData.mode === 'VOID' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-2xl shadow-emerald-500/10' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
                             <Zap size={24} className={formData.mode === 'VOID' ? 'animate-pulse' : ''} /> 
-                            <div className="text-center">
-                              <span className="block font-black text-[10px] uppercase tracking-widest">VOID</span>
-                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter text-zinc-500">Sovereign Focus</span>
-                            </div>
+                            <span className="block font-black text-[10px] uppercase tracking-widest">VOID</span>
                           </button>
                           <button type="button" onClick={() => setFormData({...formData, mode: 'NEXUS'})} className={`group p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all duration-300 ${formData.mode === 'NEXUS' ? 'bg-blue-500/10 border-blue-500/50 text-blue-500 shadow-2xl shadow-blue-500/10' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
                             <Crosshair size={24} className={formData.mode === 'NEXUS' ? 'animate-pulse' : ''} />
-                            <div className="text-center">
-                              <span className="block font-black text-[10px] uppercase tracking-widest">NEXUS</span>
-                              <span className="text-[8px] opacity-60 uppercase font-bold tracking-tighter text-zinc-500">Tactical Bridge</span>
-                            </div>
+                            <span className="block font-black text-[10px] uppercase tracking-widest">NEXUS</span>
                           </button>
                        </div>
                     </div>
 
                     <div className="space-y-4">
                       <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Objection Input</label>
-                      <textarea required placeholder='"I need to talk this over with my board... we will circle back in a few weeks."' className="w-full bg-zinc-950/80 border border-zinc-800 rounded-3xl p-8 text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500/50 min-h-[180px] resize-none text-base font-medium placeholder:text-zinc-800 transition-all" value={formData.objection} onChange={(e) => setFormData({...formData, objection: e.target.value})} />
+                      <textarea required placeholder='"I need to talk this over with my board..."' className="w-full bg-zinc-950/80 border border-zinc-800 rounded-3xl p-8 text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500/50 min-h-[180px] resize-none text-base font-medium placeholder:text-zinc-800 transition-all" value={formData.objection} onChange={(e) => setFormData({...formData, objection: e.target.value})} />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -278,11 +296,11 @@ const App: React.FC = () => {
                       </button>
 
                       {error && (
-                        <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex flex-col items-center gap-4 text-rose-400 text-xs animate-shake">
+                        <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex items-center gap-4 text-rose-400 text-xs animate-shake">
                           <AlertCircle size={24} className="shrink-0" />
-                          <div className="flex-1 space-y-1">
+                          <div className="flex-1">
                              <p className="font-bold uppercase tracking-tight">{error}</p>
-                             <p className="text-[9px] opacity-70">Verify your hosting provider's Environment Variables (API_KEY).</p>
+                             <button type="button" onClick={handleLinkEngine} className="text-[9px] font-black uppercase tracking-widest underline underline-offset-4 mt-1">Force Engine Re-Link</button>
                           </div>
                         </div>
                       )}
