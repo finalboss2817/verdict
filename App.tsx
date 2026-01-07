@@ -6,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, ShieldAlert, Cpu } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Settings } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -24,25 +24,9 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<'engine' | 'protocol'>('engine');
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isEngineReady, setIsEngineReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
-
-  // Mandatory Key Check on Load
-  useEffect(() => {
-    const checkEngine = async () => {
-      const aiStudio = (window as any).aistudio;
-      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
-        const hasKey = await aiStudio.hasSelectedApiKey();
-        setIsEngineReady(hasKey);
-      } else {
-        // Fallback for non-AI Studio environments
-        setIsEngineReady(!!process.env.API_KEY);
-      }
-    };
-    checkEngine();
-  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -55,15 +39,6 @@ const App: React.FC = () => {
     if (window.innerWidth >= 1024) setIsSidebarOpen(true);
     return () => subscription.unsubscribe();
   }, []);
-
-  const handleLinkEngine = async () => {
-    const aiStudio = (window as any).aistudio;
-    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
-      await aiStudio.openSelectKey();
-      setIsEngineReady(true);
-      setError(null);
-    }
-  };
 
   const fetchHistory = useCallback(async () => {
     if (!session?.user) return;
@@ -78,7 +53,17 @@ const App: React.FC = () => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
 
-  const handleSubmit = async (e?: React.FormEvent, retryCount = 0) => {
+  const handleLinkEngine = async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+      await aiStudio.openSelectKey();
+      setError(null);
+      return true;
+    }
+    return false;
+  };
+
+  const handleSubmit = async (e?: React.FormEvent, isRetry = false) => {
     if (e) e.preventDefault();
     if (!formData.objection.trim() || !session?.user) return;
 
@@ -88,47 +73,30 @@ const App: React.FC = () => {
     try {
       const result = await analyzeObjection(formData);
       
-      const newEntry = {
-        timestamp: Date.now(),
-        objection: formData.objection,
-        mode: formData.mode,
-        context: {
-          ticketSize: formData.ticketSize,
-          product: formData.product,
-          stage: formData.stage
-        },
-        result,
-        user_id: session.user.id
-      };
-
       const { data, error: dbError } = await supabase
         .from('analyses')
-        .insert([newEntry])
-        .select()
-        .single();
+        .insert([{
+          timestamp: Date.now(),
+          objection: formData.objection,
+          mode: formData.mode,
+          context: { ticketSize: formData.ticketSize, product: formData.product, stage: formData.stage },
+          result,
+          user_id: session.user.id
+        }])
+        .select().single();
 
       if (dbError) throw dbError;
 
-      const savedAnalysis = data as Analysis;
-      setHistory(prev => [savedAnalysis, ...prev]);
-      setCurrentAnalysisId(savedAnalysis.id);
+      setHistory(prev => [data as Analysis, ...prev]);
+      setCurrentAnalysisId(data.id);
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error(`Engine Exception:`, err);
-      
-      const isAuthIssue = err.message === "AUTH_KEY_MISSING" || 
-                          err.message === "AUTH_KEY_INVALID" || 
-                          err.message === "ENTITY_NOT_FOUND";
-
-      if (isAuthIssue && retryCount < 1) {
-        await handleLinkEngine();
-        return handleSubmit(undefined, retryCount + 1);
+      if (!isRetry && (err.message === "KEY_REQUIRED" || err.message === "AUTH_FAIL")) {
+        const linked = await handleLinkEngine();
+        if (linked) return handleSubmit(undefined, true);
       }
-
-      setError(err.message === "AUTH_KEY_MISSING" 
-        ? "Engine Disconnected. Please re-link via the header settings." 
-        : (err.message || "Operation failed."));
+      setError(err.message === "KEY_REQUIRED" ? "Connection required. Click to link engine." : "Engine connection failed. Please check your credentials.");
     } finally {
       setIsLoading(false);
     }
@@ -142,59 +110,28 @@ const App: React.FC = () => {
 
   if (!session) return <Auth />;
 
-  // Engine Connection Splash
-  if (isEngineReady === false) return (
-    <div className="min-h-screen bg-[#070707] flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-[40px] p-12 text-center space-y-8 shadow-2xl">
-        <div className="w-20 h-20 bg-zinc-950 border border-zinc-800 rounded-3xl flex items-center justify-center mx-auto">
-          <Cpu size={40} className="text-zinc-600 animate-pulse" />
-        </div>
-        <div className="space-y-2">
-          <h2 className="text-2xl font-black italic uppercase tracking-tighter text-white">Initialize Engine</h2>
-          <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest leading-relaxed">
-            Sovereign logic requires a secure link to the Gemini intelligence cluster.
-          </p>
-        </div>
-        <button 
-          onClick={handleLinkEngine}
-          className="w-full bg-white text-black font-black py-5 rounded-2xl flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-95 transition-all text-xs tracking-widest uppercase shadow-xl"
-        >
-          <Zap size={16} fill="black" /> Connect Intelligence
-        </button>
-        <p className="text-[10px] text-zinc-700 font-bold uppercase tracking-widest">
-          Requires a paid project API key (billing enabled).
-        </p>
-      </div>
-    </div>
-  );
-
   const currentAnalysis = history.find(a => a.id === currentAnalysisId);
 
   return (
     <div className="flex h-screen bg-[#070707] text-zinc-100 overflow-hidden">
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
-      )}
+      {isSidebarOpen && <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
-      <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:opacity-0 lg:overflow-hidden'}`}>
+      <aside className={`fixed inset-y-0 left-0 lg:relative z-50 bg-zinc-950 border-r border-zinc-900 flex flex-col transition-all duration-500 ${isSidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80 lg:translate-x-0 lg:w-0 lg:opacity-0'}`}>
         <div className="p-6 border-b border-zinc-900 flex justify-between items-center">
           <div className="flex flex-col">
-            <div className="flex items-center gap-2 text-zinc-100">
+            <div className="flex items-center gap-2">
               <Gavel size={24} />
-              <h1 className="font-black italic tracking-tighter text-xl uppercase text-white">VERDICT</h1>
+              <h1 className="font-black italic text-xl uppercase tracking-tighter">VERDICT</h1>
             </div>
-            <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-tighter mt-0.5">Meena Technologies</span>
           </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-zinc-500 hover:text-white transition-colors">
-            <X size={20} />
-          </button>
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-zinc-500"><X size={20} /></button>
         </div>
         
         <nav className="p-4 border-b border-zinc-900 space-y-1">
-          <button onClick={() => { setActiveView('engine'); if(window.innerWidth < 1024) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeView === 'engine' ? 'bg-zinc-900 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
+          <button onClick={() => setActiveView('engine')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeView === 'engine' ? 'bg-zinc-900 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
             <LayoutDashboard size={18} /> Engine
           </button>
-          <button onClick={() => { setActiveView('protocol'); if(window.innerWidth < 1024) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeView === 'protocol' ? 'bg-zinc-900 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
+          <button onClick={() => setActiveView('protocol')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeView === 'protocol' ? 'bg-zinc-900 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}>
             <BookOpen size={18} /> Protocol
           </button>
         </nav>
@@ -202,109 +139,77 @@ const App: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div className="flex items-center gap-2 text-zinc-600 px-2 py-1">
             <History size={14} />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">History</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">History</span>
           </div>
-          {history.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-zinc-800 text-[10px] font-bold uppercase tracking-widest">Pipeline Clear</p>
-            </div>
-          ) : (
-            history.map(item => (
-              <HistoryItem key={item.id} analysis={item} isActive={currentAnalysisId === item.id && activeView === 'engine'} onClick={() => { setCurrentAnalysisId(item.id); setActiveView('engine'); if (window.innerWidth < 1024) setIsSidebarOpen(false); }} />
-            ))
-          )}
+          {history.map(item => (
+            <HistoryItem key={item.id} analysis={item} isActive={currentAnalysisId === item.id && activeView === 'engine'} onClick={() => { setCurrentAnalysisId(item.id); setActiveView('engine'); if(window.innerWidth < 1024) setIsSidebarOpen(false); }} />
+          ))}
         </div>
 
-        <div className="p-4 border-t border-zinc-900 bg-zinc-950">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center"><User size={16} className="text-zinc-500" /></div>
-              <span className="text-[10px] font-black text-zinc-500 uppercase truncate max-w-[100px]">{session.user.email?.split('@')[0]}</span>
-            </div>
-            <button onClick={() => supabase.auth.signOut()} className="p-2 text-zinc-600 hover:text-rose-400"><LogOut size={16} /></button>
+        <div className="p-4 border-t border-zinc-900 bg-zinc-950 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center"><User size={16} className="text-zinc-500" /></div>
+            <span className="text-[10px] font-black text-zinc-500 uppercase truncate max-w-[100px]">{session.user.email?.split('@')[0]}</span>
           </div>
+          <button onClick={() => supabase.auth.signOut()} className="p-2 text-zinc-600 hover:text-rose-400"><LogOut size={16} /></button>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-full bg-[#070707] relative overflow-hidden">
-        <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-[#070707]/95 backdrop-blur-md z-30">
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
+      <main className="flex-1 flex flex-col h-full bg-[#070707] overflow-hidden">
+        <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-6 bg-[#070707]/95 backdrop-blur-md z-30">
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100"><Menu size={18} /></button>
           <div className="flex items-center gap-3">
-             <button onClick={handleLinkEngine} className="hidden md:flex items-center gap-2 text-zinc-500 hover:text-zinc-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all">
-               <Zap size={12} /> Re-Link Engine
-             </button>
-             <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
-               <PlusCircle size={14} /> New Verdict
+             <button onClick={handleLinkEngine} className="text-zinc-500 hover:text-zinc-300 p-2"><Settings size={18} /></button>
+             <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="bg-zinc-100 hover:bg-white text-black px-4 py-2 rounded-full text-[10px] font-black transition-all uppercase tracking-widest flex items-center gap-2">
+               <PlusCircle size={14} /> New Analysis
              </button>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto w-full">
           {activeView === 'protocol' ? <Protocol /> : (
-            <div className="max-w-4xl mx-auto p-4 md:p-6 lg:p-12">
+            <div className="max-w-4xl mx-auto p-6 md:p-12">
               {(!currentAnalysisId || !currentAnalysis) ? (
-                <div className="space-y-12">
-                  <div className="text-center space-y-4">
-                    <h2 className="text-5xl md:text-7xl font-black text-zinc-100 tracking-tighter italic uppercase">VERDICT</h2>
-                    <p className="text-zinc-600 text-[10px] md:text-xs font-bold uppercase tracking-[0.4em]">The Deal Disqualification Engine</p>
+                <div className="space-y-12 animate-in fade-in duration-700">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-6xl font-black text-zinc-100 tracking-tighter italic uppercase">VERDICT</h2>
+                    <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-[0.4em]">Sovereign Objection Analysis</p>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="bg-zinc-900/10 border border-zinc-800/50 rounded-[40px] p-6 md:p-12 space-y-10 relative overflow-hidden backdrop-blur-3xl shadow-2xl">
-                    <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-600/30"></div>
-                    
-                    <div className="space-y-4">
-                       <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Operation Protocol</label>
-                       <div className="grid grid-cols-2 gap-4">
-                          <button type="button" onClick={() => setFormData({...formData, mode: 'VOID'})} className={`group p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all duration-300 ${formData.mode === 'VOID' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-2xl shadow-emerald-500/10' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
-                            <Zap size={24} className={formData.mode === 'VOID' ? 'animate-pulse' : ''} /> 
-                            <span className="block font-black text-[10px] uppercase tracking-widest">VOID</span>
-                          </button>
-                          <button type="button" onClick={() => setFormData({...formData, mode: 'NEXUS'})} className={`group p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all duration-300 ${formData.mode === 'NEXUS' ? 'bg-blue-500/10 border-blue-500/50 text-blue-500 shadow-2xl shadow-blue-500/10' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600 hover:border-zinc-700'}`}>
-                            <Crosshair size={24} className={formData.mode === 'NEXUS' ? 'animate-pulse' : ''} />
-                            <span className="block font-black text-[10px] uppercase tracking-widest">NEXUS</span>
-                          </button>
-                       </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Objection Input</label>
-                      <textarea required placeholder='"I need to talk this over with my board..."' className="w-full bg-zinc-950/80 border border-zinc-800 rounded-3xl p-8 text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500/50 min-h-[180px] resize-none text-base font-medium placeholder:text-zinc-800 transition-all" value={formData.objection} onChange={(e) => setFormData({...formData, objection: e.target.value})} />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Deal Size</label>
-                        <select className="w-full bg-zinc-950/80 border border-zinc-800 rounded-2xl p-5 text-xs text-zinc-400 font-bold appearance-none cursor-pointer focus:border-zinc-700" value={formData.ticketSize} onChange={(e) => setFormData({...formData, ticketSize: e.target.value})}>
-                          <option>High-Ticket ($10k+)</option><option>Mid-Ticket ($1k-$10k)</option><option>B2B Enterprise</option>
-                        </select>
-                      </div>
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Market/Product</label>
-                        <input required type="text" placeholder="e.g. Agency Services" className="w-full bg-zinc-950/80 border border-zinc-800 rounded-2xl p-5 text-xs text-zinc-100 font-bold focus:outline-none focus:border-zinc-700 placeholder:text-zinc-800" value={formData.product} onChange={(e) => setFormData({...formData, product: e.target.value})} />
-                      </div>
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.2em] ml-2">Phase</label>
-                        <select className="w-full bg-zinc-950/80 border border-zinc-800 rounded-2xl p-5 text-xs text-zinc-400 font-bold appearance-none cursor-pointer focus:border-zinc-700" value={formData.stage} onChange={(e) => setFormData({...formData, stage: e.target.value})}>
-                          <option>Discovery Call</option><option>Proposal Sent</option><option>Closing Stage</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-6">
-                      <button disabled={isLoading} className="w-full bg-zinc-100 hover:bg-white text-black font-black py-6 rounded-3xl flex items-center justify-center gap-4 transition-all disabled:opacity-50 text-xs tracking-widest shadow-2xl active:scale-[0.98] uppercase">
-                        {isLoading ? <Loader2 size={24} className="animate-spin" /> : <><Send size={18} /> Decode Objection</>}
+                  <form onSubmit={handleSubmit} className="bg-zinc-900/10 border border-zinc-800/50 rounded-[40px] p-8 md:p-12 space-y-8 backdrop-blur-3xl shadow-2xl relative">
+                    <div className="grid grid-cols-2 gap-4">
+                      <button type="button" onClick={() => setFormData({...formData, mode: 'VOID'})} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${formData.mode === 'VOID' ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-500' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600'}`}>
+                        <Zap size={24} /> <span className="font-black text-[10px] uppercase tracking-widest">VOID Mode</span>
                       </button>
-
-                      {error && (
-                        <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex items-center gap-4 text-rose-400 text-xs animate-shake">
-                          <AlertCircle size={24} className="shrink-0" />
-                          <div className="flex-1">
-                             <p className="font-bold uppercase tracking-tight">{error}</p>
-                             <button type="button" onClick={handleLinkEngine} className="text-[9px] font-black uppercase tracking-widest underline underline-offset-4 mt-1">Force Engine Re-Link</button>
-                          </div>
-                        </div>
-                      )}
+                      <button type="button" onClick={() => setFormData({...formData, mode: 'NEXUS'})} className={`p-6 rounded-3xl border flex flex-col items-center gap-3 transition-all ${formData.mode === 'NEXUS' ? 'bg-blue-500/10 border-blue-500/50 text-blue-500' : 'bg-zinc-950/50 border-zinc-800 text-zinc-600'}`}>
+                        <Crosshair size={24} /> <span className="font-black text-[10px] uppercase tracking-widest">NEXUS Mode</span>
+                      </button>
                     </div>
+
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest ml-2">Objection Text</label>
+                      <textarea required placeholder='"I need to check with my team..."' className="w-full bg-zinc-950/80 border border-zinc-800 rounded-3xl p-8 text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-700 min-h-[160px] resize-none" value={formData.objection} onChange={(e) => setFormData({...formData, objection: e.target.value})} />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <select className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] text-zinc-400 font-bold uppercase tracking-widest" value={formData.ticketSize} onChange={(e) => setFormData({...formData, ticketSize: e.target.value})}>
+                        <option>High-Ticket</option><option>Mid-Ticket</option><option>Enterprise</option>
+                      </select>
+                      <input required type="text" placeholder="Industry/Product" className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] text-zinc-100 font-bold uppercase tracking-widest" value={formData.product} onChange={(e) => setFormData({...formData, product: e.target.value})} />
+                      <select className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-[10px] text-zinc-400 font-bold uppercase tracking-widest" value={formData.stage} onChange={(e) => setFormData({...formData, stage: e.target.value})}>
+                        <option>Discovery</option><option>Proposal</option><option>Closing</option>
+                      </select>
+                    </div>
+
+                    <button disabled={isLoading} className="w-full bg-zinc-100 hover:bg-white text-black font-black py-6 rounded-3xl flex items-center justify-center gap-4 transition-all disabled:opacity-50 text-xs tracking-widest uppercase">
+                      {isLoading ? <Loader2 size={24} className="animate-spin" /> : <><Send size={18} /> Run Verdict</>}
+                    </button>
+
+                    {error && (
+                      <div className="flex items-center gap-3 text-rose-500 text-[10px] font-bold uppercase tracking-widest bg-rose-500/5 p-4 rounded-2xl border border-rose-500/20">
+                        <AlertCircle size={16} /> {error}
+                      </div>
+                    )}
                   </form>
                 </div>
               ) : <AnalysisView analysis={currentAnalysis} onDelete={(id) => {

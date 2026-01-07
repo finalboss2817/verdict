@@ -2,17 +2,16 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 /**
- * Sovereign Analysis Engine - Atomic Execution
+ * Sovereign Analysis Engine - Direct Execution
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  // Always retrieve the key at the moment of execution to catch injected values
+  // Direct access to the platform-provided key
   const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
-    throw new Error("AUTH_KEY_MISSING");
+    throw new Error("KEY_REQUIRED");
   }
 
-  // Create new instance for every request to ensure fresh context/key
   const ai = new GoogleGenAI({ apiKey });
   const modelName = 'gemini-3-pro-preview';
 
@@ -28,7 +27,7 @@ Output strictly JSON.`;
       contents: `OBJECTION: "${input.objection}" | CONTEXT: ${input.ticketSize} at ${input.stage} phase. | MODE: ${input.mode} | PRODUCT: ${input.product}`,
       config: {
         systemInstruction,
-        thinkingConfig: { thinkingBudget: 2048 },
+        thinkingConfig: { thinkingBudget: 1024 },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -55,19 +54,12 @@ Output strictly JSON.`;
       }
     });
 
-    if (!response.text) throw new Error("EMPTY_RESPONSE");
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || '{}');
   } catch (error: any) {
     const msg = (error.message || "").toLowerCase();
-    
-    // Rule-based error categorization
-    if (msg.includes("requested entity was not found")) {
-      throw new Error("ENTITY_NOT_FOUND");
+    if (msg.includes("403") || msg.includes("api key") || msg.includes("not found")) {
+      throw new Error("AUTH_FAIL");
     }
-    if (msg.includes("api key") || msg.includes("403") || msg.includes("invalid")) {
-      throw new Error("AUTH_KEY_INVALID");
-    }
-    
     throw error;
   }
 }
