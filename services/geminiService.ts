@@ -2,21 +2,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 /**
- * Sovereign Analysis Engine - Flash Tier Execution
- * Optimized for standard/free tier stability.
+ * Sovereign Analysis Engine - Lite Tier Execution
+ * Optimized for maximum availability and high-speed processing.
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  const apiKey = process.env.API_KEY;
+  // Directly use the environment key provided by the platform
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   
-  if (!apiKey || apiKey === "undefined") {
-    throw new Error("AUTH_KEY_MISSING");
-  }
-
-  // Atomic instantiation
-  const ai = new GoogleGenAI({ apiKey });
-  
-  // Using Flash to bypass Paid Billing Project requirements of the Pro model
-  const model = 'gemini-3-flash-preview';
+  // Flash Lite is the most resilient model for accounts without premium billing
+  const model = 'gemini-flash-lite-latest';
 
   const systemInstruction = `You are the "Sovereign Sales Analyst." 
 Your job is to decode human intent from sales objections.
@@ -30,7 +24,6 @@ Output strictly JSON.`;
       contents: `OBJECTION: "${input.objection}" | CONTEXT: ${input.ticketSize} at ${input.stage} phase. | MODE: ${input.mode} | PRODUCT: ${input.product}`,
       config: {
         systemInstruction,
-        // Removed thinking budget to maximize compatibility with non-paid tiers
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -57,21 +50,13 @@ Output strictly JSON.`;
       }
     });
 
-    const text = response.text;
-    if (!text) throw new Error("EMPTY_OUTPUT");
+    const resultText = response.text;
+    if (!resultText) throw new Error("No response from analysis engine.");
     
-    return JSON.parse(text);
+    return JSON.parse(resultText);
   } catch (error: any) {
-    const msg = (error.message || "").toLowerCase();
-    
-    if (msg.includes("429") || msg.includes("quota")) {
-      throw new Error("RATE_LIMIT");
-    }
-    
-    if (msg.includes("403") || msg.includes("permission") || msg.includes("key")) {
-      throw new Error("AUTH_INVALID");
-    }
-
-    throw error;
+    console.error("Gemini Service Error:", error);
+    // Throw the raw message so the UI can display it accurately
+    throw new Error(error.message || "Unknown engine error occurred.");
   }
 }
