@@ -2,26 +2,20 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ObjectionInput } from "../types";
 
 /**
- * Sovereign Analysis Engine - High-Stakes Logic
- * Optimized for resilience in deployed environments.
+ * Sovereign Analysis Engine
+ * Handles connection to Google Gemini 3 Pro.
  */
 export async function analyzeObjection(input: ObjectionInput) {
-  // Use a temporary reference to avoid potential race conditions with process.env
-  const apiKey = (typeof process !== 'undefined' && process.env.API_KEY) || null;
+  // Direct environment variable access
+  const apiKey = process.env.API_KEY;
   
-  // Guard against falsy keys to prevent SDK fatal errors
+  // Guard against missing key to prevent hard SDK crashes
   if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
     throw new Error("AUTH_KEY_MISSING");
   }
 
-  // Create instance right before the call as per SDK guidelines
-  let ai;
-  try {
-    ai = new GoogleGenAI({ apiKey });
-  } catch (e) {
-    throw new Error("AUTH_KEY_INVALID");
-  }
-
+  // Late initialization ensures we use the most current environment state
+  const ai = new GoogleGenAI({ apiKey });
   const modelName = 'gemini-3-pro-preview';
 
   const systemInstruction = `You are the "Sovereign Sales Analyst." 
@@ -36,7 +30,7 @@ Output strictly JSON.`;
       contents: `OBJECTION: "${input.objection}" | CONTEXT: ${input.ticketSize} at ${input.stage} phase. | MODE: ${input.mode} | PRODUCT: ${input.product}`,
       config: {
         systemInstruction,
-        thinkingConfig: { thinkingBudget: 2000 },
+        thinkingConfig: { thinkingBudget: 2048 },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -63,23 +57,20 @@ Output strictly JSON.`;
       }
     });
 
-    if (!response.text) {
-      throw new Error("EMPTY_RESPONSE");
-    }
+    const text = response.text;
+    if (!text) throw new Error("EMPTY_ENGINE_OUTPUT");
 
-    return JSON.parse(response.text);
+    return JSON.parse(text);
   } catch (error: any) {
     const msg = (error.message || "").toLowerCase();
     
-    // Catch platform-level authorization issues
-    if (
-      msg.includes("api key") || 
-      msg.includes("403") || 
-      msg.includes("not found") || 
-      msg.includes("permission") || 
-      msg.includes("authorized") ||
-      msg.includes("entity")
-    ) {
+    // Check for specific "entity not found" error requiring re-auth
+    if (msg.includes("requested entity was not found")) {
+      throw new Error("ENTITY_NOT_FOUND");
+    }
+
+    // Handle general permission/auth issues
+    if (msg.includes("api key") || msg.includes("403") || msg.includes("not found") || msg.includes("invalid")) {
       throw new Error("AUTH_KEY_INVALID");
     }
     

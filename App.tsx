@@ -6,7 +6,7 @@ import { AnalysisView } from './components/AnalysisView';
 import { HistoryItem } from './components/HistoryItem';
 import { Protocol } from './components/Protocol';
 import { Auth } from './components/Auth';
-import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Link as LinkIcon } from 'lucide-react';
+import { Gavel, LayoutDashboard, History, PlusCircle, Loader2, Send, AlertCircle, BookOpen, LogOut, User, Zap, Crosshair, Menu, X, Link as LinkIcon, Settings } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 const INITIAL_FORM_STATE: ObjectionInput = {
@@ -27,26 +27,6 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [formData, setFormData] = useState<ObjectionInput>(INITIAL_FORM_STATE);
-
-  // Passive Auto-Link: Try to establish engine connection silently on mount
-  useEffect(() => {
-    const tryEstablishLink = async () => {
-      const aiStudio = (window as any).aistudio;
-      if (aiStudio && typeof aiStudio.hasSelectedApiKey === 'function') {
-        try {
-          const hasKey = await aiStudio.hasSelectedApiKey();
-          if (!hasKey) {
-            console.log("Engine Link: Initiating Handshake...");
-            // Non-blocking call to open the key selector
-            aiStudio.openSelectKey().catch(() => {});
-          }
-        } catch (e) {
-          // Fail silently during auto-link to not disturb UX
-        }
-      }
-    };
-    if (session) tryEstablishLink();
-  }, [session]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -74,6 +54,20 @@ const App: React.FC = () => {
   useEffect(() => {
     if (session) fetchHistory();
   }, [session, fetchHistory]);
+
+  const handleLinkEngine = async () => {
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+      try {
+        await aiStudio.openSelectKey();
+        setError(null);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  };
 
   const handleSubmit = async (e?: React.FormEvent, retryCount = 0) => {
     if (e) e.preventDefault();
@@ -112,38 +106,31 @@ const App: React.FC = () => {
       setActiveView('engine');
       setFormData(INITIAL_FORM_STATE);
     } catch (err: any) {
-      console.error(`Engine Event [Code: ${err.message}]:`, err);
+      console.error(`Engine Exception:`, err);
       
-      const isAuthIssue = err.message === "AUTH_KEY_MISSING" || err.message === "AUTH_KEY_INVALID";
-      
+      // Auto-recovery for platform-specific key issues
+      const isAuthIssue = err.message === "AUTH_KEY_MISSING" || 
+                          err.message === "AUTH_KEY_INVALID" || 
+                          err.message === "ENTITY_NOT_FOUND";
+
       if (isAuthIssue && retryCount < 1) {
-        const aiStudio = (window as any).aistudio;
-        if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
-          try {
-            await aiStudio.openSelectKey();
-            // Recursive Retry: Proceed assuming key selection was successful as per guidelines
-            return handleSubmit(undefined, retryCount + 1);
-          } catch (recoveryErr) {
-            setError("Handshake interrupted. Please link the engine manually.");
-          }
-        } else {
-          setError("Engine Handshake Protocol Unavailable. Please check your environment variables.");
+        const linked = await handleLinkEngine();
+        if (linked) {
+          // Proceed with silent retry assuming key was selected
+          return handleSubmit(undefined, retryCount + 1);
         }
+      }
+
+      // Final Error State Messaging
+      if (err.message === "AUTH_KEY_MISSING") {
+        setError("API CONFIGURATION MISSING: Ensure 'API_KEY' is set in your environment variables.");
+      } else if (err.message === "AUTH_KEY_INVALID") {
+        setError("INVALID API KEY: The provided engine key was rejected by the server.");
       } else {
-        setError(err.message === "AUTH_KEY_MISSING" 
-          ? "Intelligence Engine disconnected. Please click 'Link Engine' to continue." 
-          : (err.message || "An operational fault occurred."));
+        setError(err.message || "An unexpected engine fault occurred.");
       }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleManualLink = async () => {
-    const aiStudio = (window as any).aistudio;
-    if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
-      await aiStudio.openSelectKey();
-      setError(null);
     }
   };
 
@@ -170,7 +157,7 @@ const App: React.FC = () => {
           <div className="flex flex-col">
             <div className="flex items-center gap-2 text-zinc-100">
               <Gavel size={24} />
-              <h1 className="font-black italic tracking-tighter text-xl uppercase">VERDICT</h1>
+              <h1 className="font-black italic tracking-tighter text-xl uppercase text-white">VERDICT</h1>
             </div>
             <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-tighter mt-0.5">Meena Technologies</span>
           </div>
@@ -219,8 +206,8 @@ const App: React.FC = () => {
         <header className="h-16 border-b border-zinc-900 flex items-center justify-between px-4 md:px-6 sticky top-0 bg-[#070707]/95 backdrop-blur-md z-30">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-600 hover:text-zinc-100 transition-colors"><Menu size={18} /></button>
           <div className="flex items-center gap-3">
-             <button onClick={handleManualLink} className="hidden md:flex items-center gap-2 text-zinc-500 hover:text-zinc-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all">
-               <LinkIcon size={12} /> Link Engine
+             <button onClick={handleLinkEngine} className="hidden md:flex items-center gap-2 text-zinc-500 hover:text-zinc-300 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all">
+               <Settings size={12} /> Config Engine
              </button>
              <button onClick={() => { setCurrentAnalysisId(null); setActiveView('engine'); setError(null); }} className="flex items-center gap-2 bg-zinc-100 hover:bg-white text-black px-5 py-2.5 rounded-full text-[10px] font-black transition-all shadow-lg active:scale-95 uppercase tracking-widest">
                <PlusCircle size={14} /> New Verdict
@@ -291,11 +278,11 @@ const App: React.FC = () => {
                       </button>
 
                       {error && (
-                        <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex flex-col md:flex-row items-center gap-4 text-rose-400 text-xs animate-shake">
+                        <div className="bg-rose-500/10 border border-rose-500/20 p-6 rounded-3xl flex flex-col items-center gap-4 text-rose-400 text-xs animate-shake">
                           <AlertCircle size={24} className="shrink-0" />
-                          <div className="flex-1 space-y-2">
+                          <div className="flex-1 space-y-1">
                              <p className="font-bold uppercase tracking-tight">{error}</p>
-                             <button type="button" onClick={handleManualLink} className="text-[9px] font-black uppercase tracking-widest underline decoration-rose-500/40 underline-offset-4 hover:decoration-rose-500 transition-all">Link Engine Manually</button>
+                             <p className="text-[9px] opacity-70">Verify your hosting provider's Environment Variables (API_KEY).</p>
                           </div>
                         </div>
                       )}
